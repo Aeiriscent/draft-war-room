@@ -1,5 +1,6 @@
 // Page views. Each returns an HTML string; app.js wires events through data-act attributes.
-import { esc, fmt, pos, grade, tag, playerCell, riskTxt, ageTxt, ago } from './h.js';
+import { esc, fmt, pos, grade, tag, playerCell, riskTxt, ageTxt, ago, kickTxt, fxTag } from './h.js';
+import { SLOT_OK } from '../weekly.js';
 import { pickLabel } from '../draft.js';
 import { bestLineup } from '../model.js';
 import { SLOT_LABEL, describeScoring } from '../league.js';
@@ -292,6 +293,124 @@ export function methodView(C) {
     <li><b>Role</b> = snap share plus target share (WR/TE), carry share (RB) or rushing volume (QB). <b>Support cast</b> = team scoring, QB production and how much the team feeds the position.</li>
     <li><b>Risk</b> adds up: injury history, recurring soft-tissue injuries, age past the position cliff, current injury, committee usage, weekly volatility, small samples and no team.</li>
     <li><b>Your pick</b> recommendations start from rank, scale by how much the player improves <i>your</i> starting lineup, and add urgency when his position’s value will be gone before your next turn (using market rank as ADP). Targets get a bump, avoids a penalty.</li>
-  </ol><p class="small muted">Prospects before the NFL draft are graded from consensus rookie rankings only. Contracts, coaching changes and schedule are not modeled yet: use notes and tags for those.</p></div>
+  </ol><p class="small muted">Prospects before the NFL draft are graded from consensus rookie rankings only. Contracts and coaching changes are not modeled yet: use notes and tags for those.</p></div>
+  <div class="panel" style="margin-top:14px"><h2>Weekly lineup (start/sit)</h2><ol class="small">
+    <li><b>Starting point:</b> 55% Sleeper’s weekly projection, rescored in your league’s scoring (TE premium included), and 45% his recent form: this season’s points per game with the latest weeks weighted most, pulled slightly toward his season average.</li>
+    <li><b>Matchup adjustments</b> to the form half: points the opponent allows to his position (in your scoring, shrunk toward average), the Vegas implied team total vs his team’s season average, game script from the spread (big favorites run more, underdogs pass more), home field, domes, and the kickoff-hour forecast (wind 15+ mph, rain or snow, below 25°F) for outdoor stadiums. Defenses are scored off the opponent’s implied total.</li>
+    <li><b>Teammates:</b> when a pass catcher or running back who had been playing is ruled out, his target or carry share is redistributed to healthy teammates in proportion to their roles (Sleeper’s depth chart breaks backfield ties). A starting QB ruling out downgrades his pass catchers.</li>
+    <li><b>Role:</b> snap share up or down 10+ points over the last three games moves him ±4%. Players returning from a missed game take a 7% haircut for snap management.</li>
+    <li><b>Availability:</b> Out/IR/suspended = 0. Doubtful = 15% to play. Questionable depends on the week’s practice: full 93%, limited 78%, did not practice 45%. Playing through a soft-tissue injury (hamstring, groin, calf, quad, ankle, Achilles) trims efficiency 8%. Expected points = projection × chance to play.</li>
+    <li><b>Range and win odds:</b> each player’s spread comes from his own week-to-week volatility plus the chance he sits. Lineup totals add up means and variances, and win probability compares yours to your opponent’s best lineup.</li>
+    <li><b>Lineup style:</b> Max points ranks by expected points; Safe floor and Upside shift by about half a standard deviation. Auto picks whichever gives the highest chance to win: favorites get steadier lineups, underdogs get more variance.</li>
+    <li><b>Locks:</b> players whose game has kicked off stay where they are in Sleeper; finished games use actual points.</li>
+  </ol><p class="small muted">Injury designations come live from Sleeper (refreshed up to twice a day, or tap the injury chip to refresh). Lines refresh from nflverse every few hours, weather from Open-Meteo hourly. Always confirm inactives about 90 minutes before kickoff.</p></div>
   </div>`;
+}
+
+// ---------------- Lineup (weekly start/sit) ----------------
+const MODES = [['auto', 'Auto'], ['safe', 'Safe floor'], ['balanced', 'Max points'], ['upside', 'Upside']];
+const SLOT_TXT = { SUPER_FLEX: 'SF', FLEX: 'FLEX', REC_FLEX: 'W/T', WRRB_FLEX: 'W/R', DEF: 'DEF', K: 'K' };
+const posBadge = (p) => (['QB', 'RB', 'WR', 'TE'].includes(p) ? pos(p) : `<span class="pos">${esc(p)}</span>`);
+const pctTxt = (x) => (x == null ? '–' : `${Math.round(x * 100)}%`);
+
+function topFactors(e, n = 3) {
+  const fx = [...e.factors].sort((a, b) => Math.abs(b.mult - 1) - Math.abs(a.mult - 1));
+  const inj = fx.find((f) => f.label === 'Injury' || f.label === 'Practice');
+  const out = fx.filter((f) => f !== inj && Math.abs(f.mult - 1) >= 0.02).slice(0, inj ? n - 1 : n);
+  return inj ? [inj, ...out] : out;
+}
+
+function luRow(e, slot, { isNew = false } = {}) {
+  if (!e) return `<div class="lu-row"><span class="slot">${esc(SLOT_TXT[slot] || slot)}</span><span class="empty muted">${SLOT_OK[slot] ? 'Empty' : 'Not modeled (IDP)'}</span><span></span></div>`;
+  const p = e.p, g = e.game;
+  const inj = e.status?.injury;
+  const state = e.done ? 'Final' : e.locked ? 'In progress' : '';
+  const gameTxt = e.bye ? '<b class="risk-High">BYE</b>' : `${g.home ? 'vs' : '@'} ${esc(g.opp)} · ${esc(state || kickTxt(g))}`;
+  const chips = e.bye ? '' : topFactors(e).map(fxTag).join('') + (e.gameTimeDecision && !e.locked ? tag('Late kickoff: have a pivot', 'warn') : '');
+  const dead = e.bye || e.pPlay === 0;
+  const val = e.done ? `<b>${fmt(e.exp)}</b><small>final</small>` : e.locked && e.actual != null ? `<b>${fmt(e.actual)}</b><small>so far · proj ${fmt(e.exp)}</small>` : `<b>${fmt(e.exp)}</b><small>${fmt(e.floor)}–${fmt(e.ceil)}</small>`;
+  const click = p.stub ? '' : `data-act="player" data-id="${esc(p.id)}"`;
+  return `<div class="lu-row ${p.stub ? '' : 'click'} ${isNew ? 'new' : ''} ${dead ? 'dead' : ''}" ${click}>
+    <span class="slot">${slot ? esc(SLOT_TXT[slot] || slot) : ''}${e.locked ? ' 🔒' : ''}</span>
+    <div><div class="pname">${posBadge(p.pos)} ${esc(p.name)}${inj ? ` <span class="tag ${inj === 'Questionable' ? 'warn' : 'bad'}">${esc(inj === 'Questionable' ? 'Q' : inj === 'Doubtful' ? 'D' : inj)}</span>` : ''}<small>${esc(e.team || p.team || 'FA')} ${gameTxt}</small></div>
+      ${chips ? `<div class="fx">${chips}</div>` : ''}</div>
+    <div class="pr">${val}</div></div>`;
+}
+
+function pivots(X) {
+  // questionable starters: who replaces them if they sit
+  const rec = X.rec, out = [];
+  rec.filled.forEach((e, i) => {
+    if (!e || e.locked || !(e.pPlay > 0 && e.pPlay < 0.9)) return;
+    const used = new Set(rec.filled.filter(Boolean).map((x) => x.p.id));
+    const alt = X.me.entries.filter((x) => !used.has(x.p.id) && !x.locked && !x.bye && x.pPlay > 0.5 && (SLOT_OK[rec.slots[i]] || []).includes(x.pos)).sort((a, b) => b.exp - a.exp)[0];
+    out.push({ e, alt });
+  });
+  return out;
+}
+
+export function lineupView(C, lg, X) {
+  const msg = {
+    loading: ['Loading this week…', 'Pulling rosters, matchups, Sleeper projections, Vegas lines and weather.'],
+    error: ['Couldn’t load the week', X.error ? `Sleeper said: ${X.error}` : ''],
+    'no-rosters': ['No rosters yet', 'Start/sit advice appears once teams have players on Sleeper.'],
+    offseason: ['Season hasn’t started', `This league is set up for the ${X.season} season. Start/sit advice turns on once its games begin.`],
+    'not-sleeper': ['Sleeper leagues only', 'Lineup advice needs a Sleeper league with rosters.'],
+  }[X.msg];
+  if (msg) {
+    return `<div class="panel empty-state"><h2>${esc(msg[0])}</h2><p class="muted">${esc(msg[1])}</p>
+      ${X.msg === 'error' ? '<div class="chips" style="justify-content:center"><button class="btn" data-act="lu-refresh">Try again</button></div>' : ''}</div>`;
+  }
+  const mineView = X.rid === X.mine;
+  const s = X.sources;
+  const controls = `<div class="lu-top">
+    <label class="field"><span>Team</span><select data-lu="luTeam">${X.teams.map((t) => `<option value="${t.rid}" ${t.rid === X.rid ? 'selected' : ''}>${t.rid === X.mine ? '★ ' : ''}${esc(t.name)}</option>`).join('')}</select></label>
+    <label class="field"><span>Week</span><select data-lu="luWeek">${Array.from({ length: 18 }, (_, i) => i + 1).map((w) => `<option value="${w}" ${w === X.week ? 'selected' : ''}>Week ${w}${w === X.curWeek ? ' (now)' : ''}</option>`).join('')}</select></label>
+    <div class="field"><span>Lineup style</span><div class="chips">${MODES.map(([k, n]) => `<button class="chip ${C.ui.luMode === k ? 'on' : ''}" data-act="lu-mode" data-v="${k}">${n}</button>`).join('')}</div></div>
+    <button class="btn" data-act="lu-refresh">Refresh</button></div>
+  <div class="lu-src small">
+    ${tag(s.proj ? `Sleeper projections · ${s.proj} players` : 'Sleeper projections unavailable', s.proj ? '' : 'warn')}
+    ${tag(`Vegas lines · ${s.lines} of ${s.games} games`, s.lines ? '' : 'warn')}
+    ${tag(`Weather · ${s.wx} of ${s.outdoor} outdoor games`, '')}
+    <button class="tag" data-act="lu-injuries" title="Re-pull injury designations from Sleeper">Injury statuses ${esc(ago(s.injAt))} ↻</button>
+    <span class="tag" data-ago="${s.at}">Updated ${esc(ago(s.at))}</span>${s.loading ? tag('Refreshing…', 'info') : ''}</div>`;
+
+  const me = X.me, opp = X.opp, rec = X.rec;
+  const meName = me.team?.name || 'Team';
+  const match = `<div class="panel">
+    <h3>Week ${X.week} matchup${mineView ? '' : ` · ${esc(meName)}`}</h3>
+    ${opp ? `<div class="match">
+      <div><div class="small muted">${esc(meName)}</div><div class="tot">${fmt(rec.total)}</div><div class="small muted">± ${fmt(rec.sd)} · set now ${fmt(me.current.total)}</div></div>
+      <div><div class="big">${pctTxt(X.winRec)}</div><div class="small muted">to win</div></div>
+      <div><div class="small muted">${esc(opp.team?.name || 'Opponent')}</div><div class="tot">${fmt(X.oppBest.total)}</div><div class="small muted">± ${fmt(X.oppBest.sd)} · set now ${fmt(opp.current.total)}</div></div></div>
+      <p class="small" style="margin:10px 0 0">With the lineup set in Sleeper right now: <b>${pctTxt(X.winNow)}</b> to win. Recommended: <b>${pctTxt(X.winRec)}</b>.
+      ${X.medianInfo ? ` Chance to beat the league median (${fmt(X.medianInfo.median)}): <b>${pctTxt(X.medianInfo.p)}</b>.` : ''}</p>`
+    : `<p class="muted">No head-to-head matchup found for this week. Projected total: <b>${fmt(rec.total)}</b>.</p>`}
+    <p class="small muted" style="margin:8px 0 0"><b>${esc(MODES.find((m) => m[0] === X.mode)?.[1] || '')}</b>${C.ui.luMode === 'auto' ? ` (auto): ${esc(X.why)}` : ''} The opponent is projected with their best lineup.</p></div>`;
+
+  const piv = pivots(X);
+  const changes = `<div class="panel">
+    <h3>${mineView ? 'Changes to make' : 'Changes they should make'}</h3>
+    ${X.swaps.length ? X.swaps.map((sw) => {
+      const gain = sw.in.exp - (sw.out ? sw.out.exp : 0);
+      const modeNote = gain < 0 && X.mode !== 'balanced' ? `<li class="muted">A touch lower on average, but ${X.mode === 'safe' ? 'a steadier floor' : 'more ceiling'}, which suits this matchup.</li>` : '';
+      const why = [...topFactors(sw.in, 2).filter((f) => f.tone === 'good').map((f) => `<li class="good">${esc(f.why)}</li>`),
+        ...(sw.out ? topFactors(sw.out, 3).filter((f) => f.tone === 'bad' || f.tone === 'warn').map((f) => `<li class="bad">${esc(sw.out.p.name.split(' ').slice(-1)[0])}: ${esc(f.why)}</li>`) : []),
+        ...(sw.out?.bye ? [`<li class="bad">${esc(sw.out.p.name)} is on bye.</li>`] : [])].slice(0, 4).join('') + modeNote;
+      return `<div class="rec"><div class="row1">Start ${posBadge(sw.in.pos)} <b>${esc(sw.in.p.name)}</b> <span class="score">${gain >= 0 ? '+' : '−'}${fmt(Math.abs(gain))}</span></div>
+        <div class="small muted">${sw.out ? `instead of ${esc(sw.out.p.name)} (${fmt(sw.out.exp)})` : 'in an empty slot'} · ${fmt(sw.in.exp)} projected</div>${why ? `<ul>${why}</ul>` : ''}</div>`;
+    }).join('') : `<p>${X.empties ? '' : '✓ '}The lineup set in Sleeper already matches the recommendation.</p>`}
+    ${piv.length ? `<h3 style="margin-top:12px">Injury watch</h3>${piv.map(({ e, alt }) => `<div class="flag">${tag(`${e.p.name}: ${pctTxt(e.pPlay)} to play`, 'warn')}<span class="muted">${alt ? `If he’s ruled out, start ${esc(alt.p.name)} (${fmt(alt.exp)}).` : 'No healthy bench option at his slot: consider a waiver pickup.'}${e.gameTimeDecision ? ' Late kickoff: check inactives ~90 minutes before.' : ''}</span></div>`).join('')}` : ''}
+    <p class="small muted" style="margin:10px 0 0">Sleeper doesn’t let other apps change lineups, so make these in Sleeper. <a href="https://sleeper.com/leagues/${esc(lg.sleeper.leagueId)}/team" target="_blank" rel="noopener">Open Sleeper ↗</a></p></div>`;
+
+  const recIds = new Set(rec.filled.filter(Boolean).map((e) => e.p.id));
+  const curIds = new Set(me.current.filled.filter(Boolean).map((e) => e.p.id));
+  const starters = rec.filled.map((e, i) => luRow(e, rec.slots[i], { isNew: e && !curIds.has(e.p.id) })).join('');
+  const bench = me.entries.filter((e) => !recIds.has(e.p.id)).sort((a, b) => b.exp - a.exp).map((e) => luRow(e, curIds.has(e.p.id) ? 'SIT' : 'BN')).join('');
+  const oppList = opp ? `<details class="panel" style="margin-top:14px"><summary><b>${esc(opp.team?.name || 'Opponent')}’s projected lineup</b> <span class="muted small">${fmt(X.oppBest.total)} pts</span></summary>
+    ${X.oppBest.filled.map((e, i) => luRow(e, X.oppBest.slots[i])).join('')}</details>` : '';
+  return `${controls}<div class="lu-grid">${match}${changes}</div>
+    <div class="lu-grid"><div class="panel"><h3>Recommended starters <span class="muted small">gold bar = change from Sleeper</span></h3>${starters}</div>
+    <div class="panel"><h3>Bench</h3>${bench || '<p class="muted">No bench players.</p>'}</div></div>${oppList}
+    <p class="small muted">Each projection blends Sleeper’s projection (rescored in this league’s scoring) with recent form adjusted for the opposing defense, the Vegas team total and spread, home field, weather at kickoff, teammate injuries, QB changes and role trends, then multiplies by the chance he plays given his injury and practice status. Tap a player for the full breakdown.</p>`;
 }

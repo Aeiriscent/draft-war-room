@@ -1,5 +1,7 @@
 // App controller: state, league tabs, live Sleeper sync, practice-draft engine, events.
-import { loadData, refreshMarket, loadSleeperPlayers } from '../data.js';
+import { loadData, refreshMarket, loadSleeperPlayers, loadSchedule, loadWeather, sleeperPlayersAt } from '../data.js';
+import { buildWeek, projectWeek, optimize, winProb, gamesForWeek, SLOT_OK } from '../weekly.js';
+import { normTeam, median, normCdf } from '../util.js';
 import { buildModel, rank } from '../model.js';
 import { normalizeConfig, scoringFromSleeper, lineupFromSleeper, SLOT_ELIG } from '../league.js';
 import { sleeper, parseSleeperRef } from '../sleeper.js';
@@ -8,7 +10,7 @@ import { teamReport, leagueTable } from '../strategy.js';
 import { PERSONAS, assignPersonas, cpuPick, rng } from '../sim.js';
 import { loadState, saveState, download } from '../store.js';
 import { playerHTML } from './player.js';
-import { rankingsView, boardView, teamsView, settingsView, methodView } from './views.js';
+import { rankingsView, boardView, teamsView, settingsView, methodView, lineupView } from './views.js';
 import { esc, toast, ago } from './h.js';
 
 const $ = (s) => document.querySelector(s);
@@ -17,7 +19,7 @@ const S = {
   data: null, prospects: null, sleeperDB: null, models: new Map(), live: new Map(),
   page: 'league', drawer: null, modal: null,
 };
-const ui = { pos: 'ALL', q: '', sort: 'rank', flip: false, limit: 150, hideTaken: true, tagged: false, bpos: 'ALL', bq: '', seg: 'recs' };
+const ui = { pos: 'ALL', q: '', sort: 'rank', flip: false, limit: 150, hideTaken: true, tagged: false, bpos: 'ALL', bq: '', seg: 'recs', luTeam: null, luWeek: null, luMode: 'auto' };
 const C = {
   ui, get tags() { return S.p.tags; }, get data() { return S.data; },
   live: (lg) => S.live.get(lg.id),
@@ -263,13 +265,177 @@ async function activate(lg, { full = true } = {}) {
 }
 
 let sleeperLoading = null;
-function ensureSleeperDB(force = false) {
-  if ((S.sleeperDB && !force) || sleeperLoading) return sleeperLoading;
-  sleeperLoading = loadSleeperPlayers({ force }).then((db) => {
+function ensureSleeperDB(force = false, maxAgeH = null) {
+  if (sleeperLoading) return sleeperLoading;
+  if (S.sleeperDB && !force && (maxAgeH == null || Date.now() - sleeperPlayersAt < maxAgeH * 3600e3)) return null;
+  sleeperLoading = loadSleeperPlayers({ force, maxAgeH }).then((db) => {
+    if (db !== S.sleeperDB) S.models.clear();
     S.sleeperDB = db;
     render();
   }).catch((e) => toast('Sleeper player list unavailable: ' + e.message)).finally(() => { sleeperLoading = null; });
   return sleeperLoading;
+}
+
+
+// ---------------- weekly lineup (start/sit) ----------------
+const BENCH = new Set(['BN', 'IR', 'TAXI', 'RES']);
+const startingSlots = (league) => (league?.roster_positions || []).filter((s) => !BENCH.has(s));
+
+async function nflState() {
+  if (S.nfl && Date.now() - S.nfl.at < 10 * 60e3) return S.nfl.state;
+  const st = await sleeper.state();
+  S.nfl = { state: st, at: Date.now() };
+  return st;
+}
+
+async function loadWeek(lg, week, { force = false } = {}) {
+  const L = S.live.get(lg.id);
+  if (!L?.league) return;
+  L.wk ||= {};
+  const cur = L.wk[week];
+  if (cur?.loading || (cur?.at && !force && Date.now() - cur.at < 10 * 60e3)) return;
+  L.wk[week] = { ...(cur || {}), loading: true };
+  if (!cur) render();
+  const season = +L.league.season;
+  const slots = startingSlots(L.league);
+  const positions = ['QB', 'RB', 'WR', 'TE', ...(slots.includes('K') ? ['K'] : []), ...(slots.includes('DEF') ? ['DEF'] : [])];
+  try {
+    const [matchups, projections, schedule] = await Promise.all([
+      sleeper.matchups(lg.sleeper.leagueId, week).catch(() => null),
+      sleeper.projections(season, week, positions).catch(() => ({})),
+      loadSchedule(season, season === S.data.meta.season ? S.data.schedule : []),
+    ]);
+    const games = gamesForWeek(schedule, week, S.data.stadiums || {});
+    const weather = await loadWeather(games).catch(() => ({}));
+    L.wk[week] = { at: Date.now(), week, season, matchups: matchups || [], projections: projections || {}, schedule, games, weather, loading: false };
+  } catch (e) {
+    L.wk[week] = { at: Date.now(), error: e.message || String(e), loading: false };
+  }
+  if (active()?.id === lg.id && S.p.view === 'lineup') render();
+}
+
+function stubProfile(id) {
+  const sp = S.sleeperDB?.[id];
+  return { id, sid: id, name: sp?.full_name || (/^[A-Z]{2,3}$/.test(id) ? `${id} D/ST` : `Player ${id}`), pos: sp?.position || (/^[A-Z]{2,3}$/.test(id) ? 'DEF' : '?'),
+    team: normTeam(sp?.team || (/^[A-Z]{2,3}$/.test(id) ? id : null)), weeks: [], trailingPpg: null, stub: true, injury: sp?.injury_status || null };
+}
+
+function lineupInfo(lg) {
+  const L = S.live.get(lg.id);
+  if (lg.kind !== 'sleeper') return { msg: 'not-sleeper' };
+  if (!L?.league) return { msg: L?.error ? 'error' : 'loading', error: L?.error };
+  if (!S.nfl) { nflState().then(render).catch((e) => { S.nfl = { state: null, at: Date.now(), error: e.message }; render(); }); return { msg: 'loading' }; }
+  const st = S.nfl.state;
+  if (!st) return { msg: 'error', error: S.nfl.error || 'Sleeper season info unavailable' };
+  const hasPlayers = (L.rosters || []).some((r) => (r.players || []).length);
+  if (!hasPlayers) return { msg: 'no-rosters' };
+  if (String(L.league.season) !== String(st.season) && st.season_type !== 'off') return { msg: 'offseason', season: L.league.season, nflSeason: st.season };
+  const curWeek = Math.max(1, Math.min(18, st.season_type === 'post' ? 18 : (st.display_week || st.week || 1)));
+  const week = +ui.luWeek || curWeek;
+  ensureSleeperDB(false, 12);
+  const D = L.wk?.[week];
+  if (!D?.at) { loadWeek(lg, week); return { msg: 'loading', week }; }
+  if (D.error) return { msg: 'error', error: D.error, week };
+  if (Date.now() - D.at > 10 * 60e3) loadWeek(lg, week);
+  const M = getModel(lg);
+  const now = new Date();
+  const wkey = `${S.models.get(lg.id)?.key}|${D.at}|${Math.floor(now / 60e3)}`;
+  if (D.wkey !== wkey) {
+    D.W = buildWeek({ data: S.data, M, week, season: D.season, sleeper: S.sleeperDB, projections: D.projections, schedule: D.schedule, weather: D.weather, now });
+    D.wkey = wkey;
+    D.cache = new Map();
+  }
+  const entryFor = (id) => {
+    if (D.cache.has(id)) return D.cache.get(id);
+    const p = M.byId.get(id) || stubProfile(id);
+    const e = projectWeek(p, D.W);
+    D.cache.set(id, e);
+    return e;
+  };
+  const slots = startingSlots(L.league);
+  const users = new Map((L.users || []).map((u) => [u.user_id, u]));
+  const teams = (L.rosters || []).map((r) => {
+    const u = users.get(r.owner_id);
+    return { rid: r.roster_id, name: u ? (u.metadata?.team_name || u.display_name) : `Team ${r.roster_id}`, ownerId: r.owner_id, co: r.co_owners || [] };
+  });
+  const uid = lg.sleeper.userId;
+  const mine = teams.find((t) => t.ownerId === uid || t.co.includes(uid));
+  const rid = +ui.luTeam || mine?.rid || teams[0]?.rid;
+  const plan = (r) => {
+    const m = D.matchups.find((x) => x.roster_id === r);
+    const ro = (L.rosters || []).find((x) => x.roster_id === r);
+    const hold = new Set([...(ro?.reserve || []), ...(ro?.taxi || [])].map(String));
+    const ids = [...new Set((m?.players || ro?.players || []).map(String))].filter((id) => !hold.has(id));
+    const pts = m?.players_points || {};
+    const entries = ids.map((id) => {
+      let e = entryFor(id);
+      const done = e.locked && e.game && pts[id] != null && (e.game.final || now - e.game.kick > 4.5 * 3600e3);
+      if (e.locked) e = { ...e, actual: pts[id] ?? null };
+      if (done) e = { ...e, done: true, exp: pts[id], sd: 0, floor: pts[id], ceil: pts[id] };
+      return e;
+    });
+    const byId = new Map(entries.map((e) => [e.p.id, e]));
+    const starters = (m?.starters || ro?.starters || []).map(String);
+    const locked = new Map();
+    starters.forEach((id, i) => { if (byId.get(id)?.locked) locked.set(id, i); });
+    const curFilled = slots.map((s, i) => byId.get(starters[i]) || null);
+    const current = { slots, filled: curFilled, total: curFilled.reduce((t, e) => t + (e ? e.exp : 0), 0), sd: Math.sqrt(curFilled.reduce((t, e) => t + (e ? e.sd ** 2 : 0), 0)) };
+    const plans = Object.fromEntries(['safe', 'balanced', 'upside'].map((k) => [k, optimize(entries, slots, k, locked)]));
+    return { rid: r, m, entries, starters, current, plans, team: teams.find((t) => t.rid === r) };
+  };
+  const me = plan(rid);
+  const oppRid = me.m?.matchup_id ? D.matchups.find((x) => x.matchup_id === me.m.matchup_id && x.roster_id !== rid)?.roster_id : null;
+  const opp = oppRid ? plan(oppRid) : null;
+  const oppBest = opp ? opp.plans.balanced : null;
+  let mode = ui.luMode, why = '';
+  const wp = (pl) => (oppBest ? winProb(pl, oppBest) : null);
+  if (mode === 'auto') {
+    if (!oppBest) { mode = 'balanced'; why = 'No head-to-head opponent this week, so it maximizes projected points.'; } else {
+      const scored = ['balanced', 'safe', 'upside'].map((k) => [k, wp(me.plans[k])]);
+      scored.sort((a, b) => b[1] - a[1] + (a[0] === 'balanced' ? 0.003 : 0) - (b[0] === 'balanced' ? 0.003 : 0));
+      mode = scored[0][0];
+      const p = wp(me.plans.balanced);
+      why = mode === 'upside' ? `You project as the underdog (${Math.round(p * 100)}%), so the higher-variance lineup gives you the better shot.`
+        : mode === 'safe' ? `You project as the favorite (${Math.round(p * 100)}%), so the steadier lineup protects the lead.`
+          : 'The highest projected lineup is also your best shot to win.';
+    }
+  }
+  const rec = me.plans[mode];
+  // swaps: recommended vs what's set in Sleeper now
+  const curIds = new Set(me.current.filled.filter(Boolean).map((e) => e.p.id));
+  const recIds = new Set(rec.filled.filter(Boolean).map((e) => e.p.id));
+  const ins = rec.filled.filter((e) => e && !curIds.has(e.p.id));
+  const outs = me.current.filled.filter((e) => e && !recIds.has(e.p.id));
+  // pair each new starter with the player he replaces: same position first, then empty slots, then whoever is left
+  const empties = me.current.filled.filter((e, i) => !e && SLOT_OK[slots[i]]).length;
+  const swaps = [];
+  const left = [...outs], waiting = [];
+  for (const e of [...ins].sort((x, y) => y.exp - x.exp)) {
+    const j = left.findIndex((o) => o.pos === e.pos);
+    if (j >= 0) swaps.push({ in: e, out: left.splice(j, 1)[0] }); else waiting.push(e);
+  }
+  let free = empties;
+  for (const e of waiting) {
+    if (free > 0) { free--; swaps.push({ in: e, out: null }); } else swaps.push({ in: e, out: left.shift() || null });
+  }
+  let medianInfo = null;
+  if (L.league.settings?.league_average_match) {
+    const others = teams.filter((t) => t.rid !== rid).map((t) => plan(t.rid).plans.balanced);
+    const med = median(others.map((o) => o.total));
+    const s = Math.sqrt(rec.sd ** 2 + (0.5 * median(others.map((o) => o.sd))) ** 2) || 1;
+    medianInfo = { median: med, p: normCdf((rec.total - med) / s) };
+  }
+  const D2 = D;
+  return {
+    week, curWeek, season: D.season, teams, rid, mine: mine?.rid, me, opp, oppBest, mode, why, rec, swaps, empties,
+    winNow: oppBest ? wp(me.current) : null, winRec: oppBest ? wp(rec) : null, medianInfo, slots,
+    sources: {
+      at: D2.at, proj: Object.keys(D2.projections || {}).length,
+      lines: [...D2.games.values()].filter((g) => g.total != null).length / 2, games: D2.games.size / 2,
+      wx: Object.keys(D2.weather || {}).length, outdoor: [...D2.games.values()].filter((g) => g.roof !== 'dome').length / 2,
+      injAt: sleeperPlayersAt, loading: D2.loading,
+    },
+  };
 }
 
 // ---------------- practice engine ----------------
@@ -323,11 +489,12 @@ function renderTabs() {
   $('#tabs').innerHTML = tabs + '<button class="tab" data-act="add-league">+ League</button>';
 }
 
-function subnav(lg, B) {
-  const v = S.p.view;
+function subnav(lg, B, v = S.p.view) {
   const kinds = { sleeper: 'Sleeper league', mock: 'Sleeper draft', practice: 'Practice draft', manual: 'Draft tracker' };
   const meta = `${kinds[lg.kind]} · ${lg.config.teams} teams · ${lg.phase === 'existing' ? 'existing league' : 'startup'}`;
-  return `<nav class="subnav">${[['board', 'Draft board'], ['rankings', 'Rankings'], ['teams', 'Teams'], ['settings', 'League settings']]
+  const views = [['board', 'Draft board'], ['rankings', 'Rankings'], ['teams', 'Teams'], ['settings', 'League settings']];
+  if (lg.kind === 'sleeper' && lg.phase === 'existing') views.unshift(['lineup', 'Lineup']);
+  return `<nav class="subnav">${views
     .map(([k, n]) => `<button class="${v === k ? 'on' : ''}" data-act="view" data-v="${k}">${n}</button>`).join('')}<span class="meta">${esc(meta)}</span></nav>`;
 }
 
@@ -358,9 +525,11 @@ function render() {
     else {
       const B = boardInfo(lg);
       S.lastB = B;
-      const v = S.p.view;
-      const body = v === 'rankings' ? rankingsView(C, lg, B) : v === 'teams' ? teamsView(C, lg, B) : v === 'settings' ? settingsView(C, lg, B) : boardView(C, lg, B);
-      main.innerHTML = subnav(lg, B) + `<div class="wrap">${body}</div>`;
+      let v = S.p.view;
+      if (v === 'lineup' && !(lg.kind === 'sleeper' && lg.phase === 'existing')) v = 'board';
+      let body;
+      if (v === 'lineup') { const X = lineupInfo(lg); S.lastLU = X; body = lineupView(C, lg, X); } else body = v === 'rankings' ? rankingsView(C, lg, B) : v === 'teams' ? teamsView(C, lg, B) : v === 'settings' ? settingsView(C, lg, B) : boardView(C, lg, B);
+      main.innerHTML = subnav(lg, B, v) + `<div class="wrap">${body}</div>`;
     }
   }
   if (focusMemo) {
@@ -387,9 +556,17 @@ function renderDrawer() {
     tags: S.p.tags, draftInfo: B.takenBy?.get(p.id) ? `Taken: ${B.takenBy.get(p.id)}` : null,
     canDraft: !taken && !!oc && ((lg.kind === 'practice' && oc.owner === B.ctx.myKey) || lg.kind === 'manual'),
     canMark: !taken && !!oc && (lg.kind === 'sleeper' || lg.kind === 'mock'),
+    week: S.p.view === 'lineup' ? findWeekEntry(p.id) : null,
   });
   d.hidden = false; scrim.hidden = false;
   d.scrollTop = keep;
+}
+
+function findWeekEntry(id) {
+  const X = S.lastLU;
+  if (!X?.me) return null;
+  const e = [X.me, X.opp].filter(Boolean).flatMap((t) => t.entries).find((x) => x.p.id === id);
+  return e ? { e, week: X.week } : null;
 }
 
 // ---------------- add-league modal ----------------
@@ -407,7 +584,7 @@ function renderModal() {
   if (m.step === 'choose') {
     inner = `${close}<h2>Add a league</h2><div class="choices">
       <button class="choice" data-act="m-step" data-v="sleeper"><b>My Sleeper league</b><span class="small muted">Startup or existing. Pulls scoring, lineup, rosters, traded picks and the live draft.</span></button>
-      <button class="choice" data-act="m-step" data-v="draft"><b>Sleeper draft link</b><span class="small muted">Any draft, including mock drafts. Paste the URL.</span></button>
+      <button class="choice" data-act="m-step" data-v="draft"><b>Paste a Sleeper link</b><span class="small muted">A league link (for start/sit and rosters) or any draft link, including mock drafts.</span></button>
       <button class="choice" data-act="m-step" data-v="practice"><b>Practice draft</b><span class="small muted">Rehearse against CPU teams running real strategies. Can copy a real league’s teams and rosters.</span></button>
       <button class="choice" data-act="m-step" data-v="manual"><b>League not on Sleeper yet</b><span class="small muted">Set the format now, track picks by hand, connect Sleeper later.</span></button></div>`;
   } else if (m.step === 'sleeper') {
@@ -418,10 +595,11 @@ function renderModal() {
       ${m.error ? `<p class="risk-High small">${esc(m.error)}</p>` : ''}${m.loading ? '<p class="muted small">Loading…</p>' : ''}
       ${m.leagues ? `<div class="list-pick">${m.leagues.length ? m.leagues.map((l) => `<button data-act="m-pick" data-id="${l.league_id}"><b>${esc(l.name)}</b> <span class="muted small">${l.total_rosters} teams · ${esc(l.status)} · ${l.settings?.type === 2 ? 'dynasty' : l.settings?.type === 1 ? 'keeper' : 'redraft'}</span></button>`).join('') : '<p class="muted">No leagues for that season.</p>'}</div>` : ''}`;
   } else if (m.step === 'draft') {
-    inner = `${close}<h2>Load a Sleeper draft</h2>
-      <label class="field"><span>Draft URL or ID</span><input type="text" id="m-draft" placeholder="https://sleeper.com/draft/nfl/1234567890" value="${esc(m.link || '')}"></label>
-      <label class="field" style="margin-top:8px"><span>Your Sleeper username (to find your slot)</span><input type="text" id="m-user2" value="${esc(S.p.lastUsername)}"></label>
-      <div class="chips" style="margin-top:10px"><button class="btn primary" data-act="m-load-draft">Load draft</button><button class="btn" data-act="m-step" data-v="choose">Back</button></div>
+    inner = `${close}<h2>Paste a Sleeper link</h2>
+      <label class="field"><span>League or draft URL (or ID)</span><input type="text" id="m-draft" placeholder="https://sleeper.com/leagues/1234567890/team" value="${esc(m.link || '')}"></label>
+      <p class="small muted" style="margin:6px 0 0">In the Sleeper app: open the league → ⚙︎ League settings → Share/Invite link, or copy the address bar on sleeper.com. Draft links look like sleeper.com/draft/nfl/…</p>
+      <label class="field" style="margin-top:8px"><span>Your Sleeper username (to find your team)</span><input type="text" id="m-user2" value="${esc(S.p.lastUsername)}"></label>
+      <div class="chips" style="margin-top:10px"><button class="btn primary" data-act="m-load-draft">Add</button><button class="btn" data-act="m-step" data-v="choose">Back</button></div>
       ${m.error ? `<p class="risk-High small">${esc(m.error)}</p>` : ''}${m.loading ? '<p class="muted small">Loading…</p>' : ''}`;
   } else if (m.step === 'practice') {
     const srcs = S.p.leagues.filter((l) => l.kind === 'sleeper');
@@ -485,7 +663,7 @@ async function loadDraftLink() {
   Object.assign(S.modal, { link: $('#m-draft').value, loading: true, error: null });
   renderModal();
   try {
-    if (!ref) throw new Error('Paste a Sleeper draft URL or numeric ID');
+    if (!ref) throw new Error('That doesn’t look like a Sleeper league or draft link');
     if (user) S.p.lastUsername = user;
     let draft = null;
     if (ref.kind !== 'league') draft = await sleeper.draft(ref.id).catch(() => null);
@@ -493,7 +671,7 @@ async function loadDraftLink() {
       const league = await sleeper.league(ref.id);
       if (league) return addSleeperLeague(league, user);
     }
-    if (!draft) throw new Error('Draft not found');
+    if (!draft) throw new Error('No Sleeper league or draft with that ID');
     const lg = newLeague(draft.league_id ? 'sleeper' : 'mock', draft.metadata?.name || 'Sleeper draft', { sleeper: { draftId: draft.draft_id, leagueId: draft.league_id || null, username: user } });
     if (!draft.league_id) lg.phase = draft.settings?.player_type === 1 ? 'existing' : 'startup';
     S.p.leagues.push(lg);
@@ -515,6 +693,10 @@ async function addSleeperLeague(league, username) {
   S.modal = null;
   S.p.view = 'board';
   await activate(lg);
+  const L = S.live.get(lg.id);
+  if (lg.phase === 'existing' && L?.draft?.status !== 'drafting' && ['in_season', 'post_season'].includes(L?.league?.status)) {
+    S.p.view = 'lineup'; save(); render();
+  }
 }
 
 function createPractice(kind) {
@@ -619,6 +801,14 @@ const ACT = {
     try { const r = await refreshMarket(S.data); S.models.clear(); render(); toast(`Market values updated (${r.date}, ${r.updated} players)`); } catch (e) { toast(e.message); }
   },
   'refresh-sleeper': async () => { await ensureSleeperDB(true); S.models.clear(); render(); toast('Sleeper player list refreshed'); },
+  'lu-mode': (el) => { ui.luMode = el.dataset.v; render(); },
+  'lu-refresh': async () => {
+    const lg = active(), X = S.lastLU;
+    await sync(lg, { full: true, quiet: true });
+    if (X?.week) await loadWeek(lg, X.week, { force: true });
+    render(); toast('Rosters, projections, lines and weather refreshed');
+  },
+  'lu-injuries': async () => { await ensureSleeperDB(true); toast('Injury statuses refreshed from Sleeper'); },
   'm-close': () => { S.modal = null; renderModal(); },
   'm-step': (el) => { S.modal = { step: el.dataset.v }; renderModal(); },
   'm-find': () => findLeagues(),
@@ -679,6 +869,7 @@ function onChange(e) {
   const lg = active();
   if (!lg) return;
   if (el.dataset.uiCheck) { ui[el.dataset.uiCheck] = el.checked; render(); return; }
+  if (el.dataset.lu) { ui[el.dataset.lu] = el.value; render(); return; }
   if (el.dataset.lg) {
     lg[el.dataset.lg] = el.value;
     if (el.dataset.lg === 'phase') { lg.phaseSet = true; S.models.delete(lg.id); }
@@ -743,4 +934,4 @@ async function init() {
 }
 
 init();
-window.__dwr = { S, boardInfo, getModel };
+window.__dwr = { S, boardInfo, getModel, lineupInfo: () => lineupInfo(active()) };

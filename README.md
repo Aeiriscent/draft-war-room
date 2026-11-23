@@ -1,8 +1,8 @@
 # Draft War Room
 
-A dynasty fantasy football draft assistant built for **superflex, TE-premium** leagues on Sleeper. It grades every player in *your league's* exact scoring, syncs live with your Sleeper draft, tells you who to take and why, and reads every other team's strategy as picks come in.
+A dynasty fantasy football assistant built for **superflex, TE-premium** leagues on Sleeper. It grades every player in *your league's* exact scoring, syncs live with your Sleeper draft, tells you who to take and why, reads every other team's strategy as picks come in, and in season tells you who to start each week.
 
-**Live app:** https://aeiriscent.github.io/draft-war-room/ (once GitHub Pages is on; see Setup)
+**Live app:** https://aeiriscent.github.io/draft-war-room/
 
 ## What it does
 
@@ -13,21 +13,22 @@ A dynasty fantasy football draft assistant built for **superflex, TE-premium** l
 | **Rankings** | Overall and positional ranks with tiers. Two sliders: *Win now ↔ Dynasty* and *Model ↔ Market*. "vs market" shows where the model disagrees with consensus. |
 | **Live draft board** | Polls Sleeper every 3 seconds during a draft. Handles snake, 3rd-round reversal, linear, and traded picks. Shows who's on the clock, your next two picks, and a "Your pick" list with reasons: lineup gain, positional drop-off before your next turn, and the odds a player lasts to you. |
 | **Teams** | Every roster plus a strategy read (QB-first, Zero RB, Elite-TE anchor, Youth movement, Win-now, Value hunter, Reaches…), lineup strength, value ranks, needs, and what they'll likely take next. |
-| **Leagues** | One tab per league: Sleeper leagues (startup or existing), any Sleeper draft link (mocks too), leagues not on Sleeper yet (manual tracker), and **practice drafts**. |
+| **Weekly lineup** | For any in-season Sleeper league: the best lineup for any team and week, win probability vs your opponent (and vs the league median if your league uses it), and exactly which changes to make in Sleeper. Each player's projection blends Sleeper's projection with recent form adjusted for the opposing defense, Vegas implied totals and spread, home field, kickoff weather, teammate injuries, QB changes, snap trends, and injury/practice status. Lineup styles: Max points, Safe floor, Upside, or Auto (whichever gives the best chance to win). An injury watch names the pivot for every questionable starter. |
+| **Leagues** | One tab per league: Sleeper leagues (find them by username or paste a league link), any Sleeper draft link (mocks too), leagues not on Sleeper yet (manual tracker), and **practice drafts**. |
 | **Practice drafts** | Rehearse against CPU teams that each run a real strategy (QB-first, Zero RB, Youth movement, TE premium, Robust RB, Market follower, Wildcard…). It can copy a real league's teams, rosters and pick order, so you can mock your actual rookie draft. |
 
 ## Setup (one time)
 
 1. **Turn on GitHub Pages:** repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-2. **Run it once:** **Actions → "Refresh data & deploy" → Run workflow.** After that it runs every morning and on every push.
-3. Open the site, then **+ League → My Sleeper league**, enter your username, and pick the league.
+2. **Run it once:** **Actions → "Refresh data & deploy" → Run workflow.** After that it runs every 6 hours and on every push.
+3. Open the site, then **+ League → My Sleeper league** (enter your username and pick the league) or **+ League → Paste a Sleeper link**.
 
 On your phone, open the site and use **Add to Home Screen**. It runs like an app.
 
 ## How data stays fresh
 
-- **Every morning**, GitHub Actions rebuilds `data/data.json` from [nflverse](https://github.com/nflverse/nflverse-data) (weekly stats, snaps, rosters, injury reports) and [DynastyProcess](https://github.com/dynastyprocess/data) (market values from FantasyPros ECR), then redeploys.
-- **In the app:** league settings, rosters, drafts, picks and injury statuses come live from the [Sleeper API](https://docs.sleeper.com). *How it works → Refresh market values* pulls the newest values on demand.
+- **Every 6 hours**, GitHub Actions rebuilds `data/data.json` from [nflverse](https://github.com/nflverse/nflverse-data) (weekly stats, snaps, rosters, injury reports, schedule with betting lines) and [DynastyProcess](https://github.com/dynastyprocess/data) (market values from FantasyPros ECR), then redeploys.
+- **In the app:** league settings, rosters, matchups, drafts, picks, weekly projections and injury/practice statuses come live from the [Sleeper API](https://docs.sleeper.com). Betting lines refresh from nflverse's schedule file and kickoff forecasts from [Open-Meteo](https://open-meteo.com). *How it works → Refresh market values* pulls the newest values on demand.
 - **Rookie prospects** live in `pipeline/build_prospects.py`. Update the source rankings there as new boards come out. After the NFL draft, rookies are matched to Sleeper automatically.
 
 ## Run locally
@@ -49,6 +50,7 @@ js/league.js                   lineup slots, scoring, starter demand per positio
 js/draft.js                    pick order, board state, recommendations, survival odds
 js/strategy.js                 team strategy detection and league table
 js/sim.js                      practice-draft CPU personas
+js/weekly.js                   weekly start/sit: matchup, Vegas, weather, injuries, lineup optimizer, win odds
 js/sleeper.js, js/data.js      Sleeper API client, data loading and refresh
 js/ui/*.js                     app controller, views, player drawer
 pipeline/                      Python data build (fetch.py, build_data.py, build_prospects.py)
@@ -57,4 +59,4 @@ tests/                         unit tests + browser e2e (mocked Sleeper)
 
 ## Not modeled yet
 
-Contracts, coaching changes and strength of schedule. Use notes and tags for those for now. The method page in the app explains each step of the model.
+Contracts, coaching changes, IDP and in-game live scoring. Use notes and tags for those for now. Sleeper's API is read-only, so lineup changes are made in Sleeper. The method page in the app explains each step of the model.

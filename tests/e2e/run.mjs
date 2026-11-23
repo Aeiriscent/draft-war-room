@@ -50,8 +50,48 @@ const picks2 = () => Array.from({ length: rookiePicks }, (_, k) => {
   return { pick_no: n, round: Math.ceil(n / T2), draft_slot: slot, roster_id: slot2[slot], player_id: String(99001 + k), metadata: { first_name: pr.n.split(' ')[0], last_name: pr.n.split(' ').slice(1).join(' '), position: pr.p, team: NFL[k], years_exp: '0' } };
 });
 
+// ---- in-season league (pasted link) for the weekly Lineup view ----
+const L3 = '300300300';
+const lineup3 = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'FLEX', 'SUPER_FLEX', 'K', 'DEF', 'BN', 'BN', 'BN', 'BN', 'BN', 'BN', 'IR'];
+const cur = data.players.filter((p) => p.sid && p.w.some((r) => 2000 + r[0] === data.meta.season)).sort((a, b) => b.v1 - a.v1 || b.v2 - a.v2);
+const DEFS = ['BUF', 'KC', 'PHI', 'DAL', 'SF', 'DET', 'BAL', 'MIA', 'GB', 'LAR'];
+DEFS.forEach((t, i) => { players[t] = { first_name: t, last_name: 'D/ST', position: 'DEF', team: t, status: 'Active' }; players['K' + i] = { full_name: `Kicker ${t}`, position: 'K', team: t, status: 'Active' }; });
+const rosters3 = users2.map((u, i) => ({ roster_id: i + 1, owner_id: u.user_id, players: [...cur.filter((_, k) => k % T2 === i).slice(0, 17).map((p) => p.sid), 'K' + i, DEFS[i]], reserve: [], taxi: [] }));
+const byPos = (ids, pos) => ids.filter((id) => players[id]?.position === pos);
+function setStarters(r, i) {
+  const ids = [...r.players], used = new Set(), take = (ok, worst = false) => {
+    let c = ids.filter((id) => !used.has(id) && ok.includes(players[id]?.position));
+    if (worst) c = c.reverse();
+    const id = c[0] || '0'; used.add(id); return id;
+  };
+  // the user's team starts its worst RB and leaves a FLEX empty, so there is something to fix
+  return lineup3.filter((s) => !['BN', 'IR'].includes(s)).map((s, k) => {
+    if (i === 0 && s === 'FLEX' && k === 7) return '0';
+    const ok = { QB: ['QB'], RB: ['RB'], WR: ['WR'], TE: ['TE'], K: ['K'], DEF: ['DEF'], FLEX: ['RB', 'WR', 'TE'], SUPER_FLEX: ['QB', 'RB', 'WR', 'TE'] }[s];
+    return take(ok, i === 0 && s === 'RB');
+  });
+}
+const matchups3 = rosters3.map((r, i) => ({ roster_id: r.roster_id, matchup_id: Math.floor(i / 2) + 1, players: r.players, starters: setStarters(r, i), points: 0, players_points: {} }));
+const statLine = { QB: { pass_yd: 245, pass_td: 1.7, pass_int: 0.7, rush_yd: 18 }, RB: { rush_yd: 62, rush_td: 0.45, rec: 3, rec_yd: 22 }, WR: { rec: 5.2, rec_yd: 64, rec_td: 0.38 }, TE: { rec: 4.1, rec_yd: 41, rec_td: 0.3 } };
+function projections(url) {
+  const pos = new URL(url).searchParams.get('position[]');
+  return rosters3.flatMap((r) => r.players).filter((id) => players[id]?.position === pos).map((id, k) => {
+    const f = 1.25 - (k % 9) * 0.06;
+    const stats = pos === 'K' ? { pts_ppr: 8 } : pos === 'DEF' ? { pts_ppr: 7 } : Object.fromEntries(Object.entries(statLine[pos]).map(([s, v]) => [s, v * f]));
+    return { player_id: id, stats };
+  });
+}
+const L3league = { league_id: L3, name: 'Season League', season: '2026', total_rosters: T2, status: 'in_season', settings: { type: 2, league_average_match: 1 }, roster_positions: lineup3, scoring_settings: scoring };
+
 function api(url) {
   const path = new URL(url).pathname.replace('/v1', '');
+  if (path.startsWith('/projections/nfl/')) return projections(url);
+  if (path === `/league/${L3}`) return L3league;
+  if (path === `/league/${L3}/rosters`) return rosters3;
+  if (path === `/league/${L3}/users`) return users2;
+  if (path === `/league/${L3}/drafts`) return [];
+  if (path === `/league/${L3}/matchups/12`) return matchups3;
+  if (/^\/league\/300300300\/matchups\/\d+$/.test(path)) return [];
   if (path === '/user/testuser') return { user_id: 'U1', display_name: 'testuser' };
   if (/^\/user\/U\d+$/.test(path)) return users.find((u) => path.endsWith(u.user_id));
   if (path.startsWith('/user/U1/leagues/nfl/')) return [{ league_id: 'L100', name: 'Test Dynasty SF', total_rosters: T, status: 'drafting', settings: { type: 2 }, roster_positions: lineup, scoring_settings: scoring },
@@ -72,7 +112,7 @@ function api(url) {
   if (path === '/draft/D1/picks') return picks();
   if (path === '/draft/D1/traded_picks') return [{ season: '2027', round: 4, roster_id: 2, owner_id: 1, previous_owner_id: 2 }];
   if (path === '/players/nfl') return players;
-  if (path === '/state/nfl') return { season: '2026', week: 12 };
+  if (path === '/state/nfl') return { season: '2026', week: 12, display_week: 12, season_type: 'regular' };
   return null;
 }
 
@@ -86,6 +126,14 @@ async function newPage(viewport) {
   await page.route('https://fonts.googleapis.com/**', (r) => r.abort());
   await page.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await page.route('https://raw.githubusercontent.com/**', (r) => r.abort());
+  await page.route('https://api.open-meteo.com/**', (r) => {
+    const u = new URL(r.request().url());
+    const start = Date.parse(u.searchParams.get('start_date') + 'T00:00:00Z');
+    const time = Array.from({ length: 48 }, (_, h) => new Date(start + h * 3600e3).toISOString().slice(0, 13) + ':00');
+    const lat = +u.searchParams.get('latitude');
+    const windy = lat > 42; // northern outdoor stadiums get a nasty day
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ hourly: { time, temperature_2m: time.map(() => (windy ? 21 : 55)), precipitation_probability: time.map(() => (windy ? 75 : 5)), precipitation: time.map(() => (windy ? 0.06 : 0)), wind_speed_10m: time.map(() => (windy ? 22 : 6)) } }) });
+  });
   await page.route('https://api.sleeper.app/**', (r) => {
     const body = api(r.request().url());
     return body == null ? r.fulfill({ status: 404, body: '' }) : r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
@@ -170,6 +218,34 @@ console.log('rookie available count:', await page.locator('.p-players tbody tr')
 await page.screenshot({ path: `${OUT}/09b-rookie-board.png` });
 await page.click('.subnav >> text=Teams');
 await page.screenshot({ path: `${OUT}/09c-rookie-teams.png` });
+// in-season league from a pasted link -> Lineup view
+await page.click('text=+ League');
+await page.click('text=Paste a Sleeper link');
+await page.fill('#m-draft', `https://sleeper.com/leagues/${L3}/team`);
+await page.fill('#m-user2', 'testuser');
+await page.click('[data-act=m-load-draft]');
+await page.waitForSelector('.match', { timeout: 20000 }).catch(async (e) => {
+  await page.screenshot({ path: `${OUT}/14-lineup-fail.png` });
+  console.log('errors:', errors, (await page.textContent('#main')).slice(0, 300));
+  throw e;
+});
+await page.waitForTimeout(800);
+console.log('lineup matchup:', (await page.textContent('.match')).replace(/\s+/g, ' ').trim());
+console.log('lineup changes:', (await page.locator('.lu-grid .panel').nth(1).textContent()).replace(/\s+/g, ' ').trim().slice(0, 400));
+console.log('lineup sources:', (await page.textContent('.lu-src')).replace(/\s+/g, ' ').trim());
+console.log('starter rows:', await page.locator('.lu-grid >> nth=1 >> .panel >> nth=0 >> .lu-row').count());
+await page.screenshot({ path: `${OUT}/14-lineup.png`, fullPage: true });
+await page.click('.lu-row.click >> nth=0');
+await page.waitForSelector('#drawer:not([hidden]) .wkbox');
+console.log('drawer week:', (await page.textContent('#drawer .wkbox')).replace(/\s+/g, ' ').trim().slice(0, 300));
+await page.screenshot({ path: `${OUT}/15-lineup-drawer.png` });
+await page.keyboard.press('Escape');
+await page.click('[data-act=lu-mode][data-v=upside]');
+await page.selectOption('[data-lu=luTeam]', '4');
+await page.waitForTimeout(300);
+console.log('other team matchup:', (await page.textContent('.match')).replace(/\s+/g, ' ').trim());
+await page.selectOption('[data-lu=luTeam]', '1');
+await page.click('[data-act=lu-mode][data-v=auto]');
 // method
 await page.click('text=How it works');
 await page.screenshot({ path: `${OUT}/10-method.png` });
@@ -192,6 +268,13 @@ await m.waitForSelector('#drawer:not([hidden]) .grades');
 await m.screenshot({ path: `${OUT}/13-mobile-drawer.png` });
 const overflow = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 console.log('mobile horizontal overflow:', overflow);
+await m.keyboard.press('Escape');
+await m.click('.tab >> text=Season League');
+await m.click('.subnav >> text=Lineup');
+await m.waitForSelector('.match', { timeout: 20000 });
+await m.waitForTimeout(500);
+await m.screenshot({ path: `${OUT}/16-mobile-lineup.png`, fullPage: true });
+console.log('mobile lineup overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();

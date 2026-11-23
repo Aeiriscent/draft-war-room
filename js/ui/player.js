@@ -1,12 +1,12 @@
 // Player profile drawer.
-import { esc, fmt, pos, grade, tag, ageTxt } from './h.js';
+import { esc, fmt, pos, grade, tag, ageTxt, kickTxt, fxTag } from './h.js';
 import { CLIFF } from '../model.js';
 
 const GRADE_NAMES = [['outlook', 'Next-yr outlook'], ['dynasty', 'Dynasty 3-yr'], ['ceiling', 'Ceiling'], ['floor', 'Floor'],
   ['role', 'Role'], ['cast', 'Support cast'], ['safety', 'Safety']];
 
 export function playerHTML(p, M, opts = {}) {
-  const { tags = {}, draftInfo = null, canDraft = false, canMark = false } = opts;
+  const { tags = {}, draftInfo = null, canDraft = false, canMark = false, week = null } = opts;
   const t = tags[p.id] || {};
   const d = p.draft || {};
   const cap = d.round ? `Round ${d.round}${d.ovr ? ` (#${d.ovr} overall)` : ''}, ${d.year}` : p.prospect ? `${d.year} class, pre-draft` : d.year ? `${d.year} entry` : 'Undrafted/unknown';
@@ -31,6 +31,7 @@ export function playerHTML(p, M, opts = {}) {
     </div>
   </div>
   ${actions}
+  ${week ? weekHTML(week) : ''}
   <div class="grades">${GRADE_NAMES.map(([k, n]) => `<div><b class="grade ${(g[k] || '–')[0]}" style="background:none;font-size:20px">${esc(g[k] || '–')}</b><span>${n}</span></div>`).join('')}</div>
   <div class="stats">
     <div><b>${fmt(p.proj)}</b><span>Projected PPG ${M.nextSeason}</span></div>
@@ -121,4 +122,19 @@ function prospectBlock(p) {
   return `<section class="block"><h3>Prospect board</h3>
     <div class="small">Consensus rookie rank <b>#${p.prospectRank}</b>${p.prospectRanks ? ` (sources: ${p.prospectRanks.map((r) => r ?? 'unranked').join(' / ')})` : ''}.
     Market value is estimated from where that rookie pick usually trades. After the NFL draft the app swaps in real draft capital, landing spot and market value.</div></section>`;
+}
+
+function weekHTML({ e, week }) {
+  const g = e.game;
+  if (e.bye) return `<div class="panel wkbox"><h3>Week ${week}</h3><p class="muted" style="margin:0">Bye week.</p></div>`;
+  const fx = e.factors.map((f) => `<div class="flag">${fxTag(f)}<span class="muted">${esc(f.why)}</span></div>`).join('') || '<div class="muted small">Nothing unusual this week.</div>';
+  return `<div class="panel wkbox"><h3>Week ${week}: ${g.home ? 'vs' : '@'} ${esc(g.opp)} <span class="muted small">${esc(kickTxt(g))}</span></h3>
+    <div class="stats">
+      <div><b>${fmt(e.done ? e.exp : e.exp)}</b><span>${e.done ? 'Final points' : 'Projected points'}</span></div>
+      <div><b>${fmt(e.floor)}–${fmt(e.ceil)}</b><span>Likely range</span></div>
+      <div><b>${Math.round(e.pPlay * 100)}%</b><span>Chance he plays</span></div>
+      <div><b>${e.sleeperPts != null ? fmt(e.sleeperPts) : '–'}</b><span>Sleeper projection (your scoring)</span></div>
+      <div><b>${e.form != null ? fmt(e.form) : '–'}</b><span>Recent form (PPG)</span></div>
+      <div><b>×${fmt(e.matchupMult ?? 1, 2)}</b><span>Matchup adjustment</span></div>
+    </div>${fx}</div>`;
 }

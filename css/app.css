@@ -218,6 +218,39 @@ section.block h3 { border-bottom: 1px solid var(--line); padding-bottom: 6px }
   .subnav .meta { display: none }
   .clock .big { font-size: 28px }
 }
+/* weekly lineup */
+.lu-top { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-bottom: 10px }
+.lu-top select { min-width: 150px }
+.lu-top div.field { display: grid; gap: 5px; font-size: 13px; color: var(--muted) }
+.lu-top div.field > span { font-weight: 600 }
+.lu-src { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px }
+.lu-src button.tag { border: 0; cursor: pointer; font: inherit; font-weight: 600; font-size: 12px }
+.lu-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-bottom: 14px; align-items: start }
+.lu-grid h3 { margin-top: 0 }
+.match { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: center; text-align: center }
+.match .big { font-family: var(--display); font-size: 42px; font-weight: 700; line-height: 1; color: var(--gold) }
+.match .tot { font-family: var(--display); font-size: 26px; font-weight: 700 }
+.lu-row { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; gap: 10px; padding: 9px 6px; border-bottom: 1px solid var(--line); align-items: center }
+.lu-row.click { cursor: pointer }
+.lu-row.click:hover { background: var(--panel2) }
+.lu-row .slot { font-size: 11px; font-weight: 700; color: var(--muted) }
+.lu-row .fx { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px }
+.lu-row .pr { text-align: right }
+.lu-row .pr b { font-family: var(--display); font-size: 19px; display: block; line-height: 1.1 }
+.lu-row .pr small { display: block; color: var(--muted); font-size: 11px }
+.lu-row.new { box-shadow: inset 3px 0 0 var(--gold) }
+.lu-row.dead .pname { color: var(--bad) }
+.lu-row .pname small { white-space: normal }
+details.panel summary { cursor: pointer; padding: 2px 0 8px }
+.wkbox { margin: 10px 0 14px }
+.wkbox h3 { margin-top: 0 }
+@media (max-width: 820px) {
+  .lu-grid { grid-template-columns: 1fr }
+  .match .big { font-size: 34px }
+  .match .tot { font-size: 21px }
+  .lu-top .field { flex: 1 1 140px }
+  .lu-top select { min-width: 0; width: 100% }
+}
 @media (prefers-reduced-motion: no-preference) {
   .rec.first { animation: glow 1.6s ease-out 1 }
   @keyframes glow { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 60%, transparent) } to { box-shadow: 0 0 0 10px transparent } }

@@ -108,3 +108,26 @@ export function gauss(r) {
   const u = Math.max(1e-9, r()), v = r();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
+
+// Sleeper and nflverse use a few different team codes
+const TEAM_FIX = { LAR: 'LA', JAC: 'JAX', WSH: 'WAS', OAK: 'LV', SD: 'LAC', STL: 'LA' };
+export const normTeam = (t) => (t ? TEAM_FIX[t] || t : t);
+
+// standard normal CDF
+export function normCdf(z) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - p : p;
+}
+
+// NFL kickoff times are listed in US Eastern time; convert 'YYYY-MM-DD' + 'HH:MM' to a UTC Date
+export function easternToUtc(day, time = '13:00') {
+  const [y, m, d] = day.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  const secondSunMar = 8 + (7 - new Date(Date.UTC(y, 2, 1)).getUTCDay()) % 7;
+  const firstSunNov = 7 - (new Date(Date.UTC(y, 10, 1)).getUTCDay() + 6) % 7;
+  const md = m * 100 + d;
+  const dst = md > 300 + secondSunMar && md < 1100 + firstSunNov ? true : (md === 300 + secondSunMar ? hh >= 2 : md === 1100 + firstSunNov ? hh < 2 : false);
+  return new Date(Date.UTC(y, m - 1, d, hh + (dst ? 4 : 5), mm));
+}

@@ -118,6 +118,17 @@ inj_body = inj.dropna(subset=['report_primary_injury'])
 inj_body = inj_body[inj_body.report_status.isin(['Out', 'Doubtful', 'Questionable'])]
 
 
+PRACT = {'Did Not Participate In Practice': 'DNP', 'Limited Participation in Practice': 'LP', 'Full Participation in Practice': 'FP'}
+cur_inj = inj[inj.season == SEASONS[-1]]
+latest_report = {}
+if len(cur_inj):
+    last_wk = int(cur_inj.week.max())
+    for r in cur_inj[cur_inj.week == last_wk].itertuples():
+        latest_report[r.gsis_id] = [last_wk, r.report_status if isinstance(r.report_status, str) else None,
+                                    PRACT.get(r.practice_status), (r.report_primary_injury if isinstance(r.report_primary_injury, str) else
+                                                                  r.practice_primary_injury if isinstance(r.practice_primary_injury, str) else None)]
+
+
 def injury_profile(g):
     out = {}
     for s in SEASONS:
@@ -147,12 +158,13 @@ def team_ctx(season):
         if not n:
             continue
         pts = sum(r.home_score if r.home_team == t else r.away_score for r in tg.itertuples())
+        allowed = sum(r.away_score if r.home_team == t else r.home_score for r in tg.itertuples())
         tw = w[w.team == t]
         by = tw.groupby('position')['fantasy_points_ppr'].sum() / n
         qb = tw[tw.position == 'QB'].groupby('player_display_name')['fantasy_points_ppr'].agg(['sum', 'count'])
         qb_ppg = float((qb['sum'].sum() / n)) if len(qb) else 0
         top_qb = qb.sort_values('count', ascending=False).index[0] if len(qb) else ''
-        ctx[t] = {'g': n, 'ppg': round(pts / n, 1), 'pa': round(tw.attempts.sum() / n, 1),
+        ctx[t] = {'g': n, 'ppg': round(pts / n, 1), 'opp': round(allowed / n, 1), 'pa': round(tw.attempts.sum() / n, 1),
                   'ra': round(tw.carries.sum() / n, 1),
                   'fp': {p: round(float(by.get(p, 0)), 1) for p in POS},
                   'qbppg': round(qb_ppg, 1), 'qb': top_qb}
@@ -213,8 +225,9 @@ for g in uni_gsis:
         lr.draft_number if lr is not None and pd.notna(lr.draft_number) else None)
     team = (lr.team if lr is not None and lr.season == SEASONS[-1] else None) or (
         mv.team if mv is not None else None) or (base.team if base is not None else None)
+    iw = latest_report.get(g)
     p = {
-        'gid': g, 'sid': sid, 'n': name, 'p': pos, 't': team if isinstance(team, str) else 'FA',
+        'gid': g, 'sid': sid, 'n': name, 'p': pos, 'iw': iw, 't': team if isinstance(team, str) else 'FA',
         'bd': str(bd)[:10] if bd else None,
         'dy': int(dy) if dy else None, 'dr': int(dr) if dr else None, 'do': int(dov) if dov else None,
         'col': base.college if base is not None and isinstance(base.college, str) else None,
@@ -238,6 +251,28 @@ for r in vals[vals.gsis_id.isna()].itertuples():
                     'ep': float(r.ecr_pos) if pd.notna(r.ecr_pos) else None,
                     'st': None, 'dc': None, 'inj': {}, 'ib': [], 'w': []})
 
+# current-season schedule with betting lines (spread_line > 0 means the home team is favored)
+all_games = rd('games.csv')
+sg = all_games[(all_games.season == SEASONS[-1]) & (all_games.game_type == 'REG')].sort_values(['week', 'gameday', 'gametime'])
+nz = lambda v: None if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+schedule = [[int(r.week), r.gameday, r.gametime, r.away_team, r.home_team, nz(r.spread_line), nz(r.total_line),
+             nz(r.roof), nz(r.stadium_id), nz(r.away_score), nz(r.home_score)] for r in sg.itertuples()]
+STADIUMS = {  # lat, lon, roof (dome | retractable | outdoors)
+    'ATL97': [33.7554, -84.4009, 'retractable'], 'BAL00': [39.2780, -76.6227, 'outdoors'], 'BOS00': [42.0909, -71.2643, 'outdoors'],
+    'BUF00': [42.7738, -78.7870, 'outdoors'], 'CAR00': [35.2258, -80.8528, 'outdoors'], 'CHI98': [41.8623, -87.6167, 'outdoors'],
+    'CIN00': [39.0955, -84.5161, 'outdoors'], 'CLE00': [41.5061, -81.6995, 'outdoors'], 'DAL00': [32.7473, -97.0945, 'retractable'],
+    'DEN00': [39.7439, -105.0201, 'outdoors'], 'DET00': [42.3400, -83.0456, 'dome'], 'GNB00': [44.5013, -88.0622, 'outdoors'],
+    'HOU00': [29.6847, -95.4107, 'retractable'], 'IND00': [39.7601, -86.1639, 'retractable'], 'JAX00': [30.3239, -81.6373, 'outdoors'],
+    'KAN00': [39.0489, -94.4839, 'outdoors'], 'LAX01': [33.9535, -118.3392, 'dome'], 'LON00': [51.5560, -0.2795, 'outdoors'],
+    'LON02': [51.6043, -0.0664, 'outdoors'], 'MAD01': [40.4531, -3.6883, 'retractable'], 'MEL00': [-37.8200, 144.9834, 'outdoors'],
+    'MEX00': [19.3029, -99.1505, 'outdoors'], 'MIA00': [25.9580, -80.2389, 'outdoors'], 'MIN01': [44.9737, -93.2581, 'dome'],
+    'MUN01': [48.2188, 11.6247, 'outdoors'], 'NAS00': [36.1665, -86.7713, 'outdoors'], 'NOR00': [29.9511, -90.0812, 'dome'],
+    'NYC01': [40.8135, -74.0745, 'outdoors'], 'PAR00': [48.9245, 2.3602, 'outdoors'], 'PHI00': [39.9008, -75.1675, 'outdoors'],
+    'PHO00': [33.5276, -112.2626, 'retractable'], 'PIT00': [40.4468, -80.0158, 'outdoors'], 'RIO00': [-22.9122, -43.2302, 'outdoors'],
+    'SEA00': [47.5952, -122.3316, 'outdoors'], 'SFO01': [37.4030, -121.9700, 'outdoors'], 'TAM00': [27.9759, -82.5033, 'outdoors'],
+    'VEG00': [36.0909, -115.1833, 'dome'], 'WAS00': [38.9078, -76.8645, 'outdoors'],
+}
+
 picks = rd('values-picks.csv')
 pick_ecr = [round(float(x), 1) for x in picks[picks.player.str.contains(r'Pick \d\.\d\d', regex=True)]
             .sort_values('pick').drop_duplicates('pick').ecr_2qb.tolist()]
@@ -251,6 +286,7 @@ data = {
                  ['DynastyProcess dynasty values (FantasyPros ECR)', 'https://github.com/dynastyprocess/data'],
              ]},
     'teams': teams, 'players': players, 'teamCtx': team_context, 'dvp': dvp, 'pickEcr': pick_ecr,
+    'schedule': schedule, 'stadiums': STADIUMS,
 }
 with open(OUT, 'w') as f:
     json.dump(data, f, separators=(',', ':'))

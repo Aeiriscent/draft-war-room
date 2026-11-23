@@ -1,6 +1,6 @@
 // The player model: turns raw weekly stats + market values into a profile, projection, grades, risks and ranks
 // for ONE league's scoring and lineup. Pure module (no DOM) so it is testable in Node.
-import { POS, clamp, mean, sd, quantile, pctRanks, letter, ageOn, normName, slug, round } from './util.js';
+import { POS, clamp, mean, sd, quantile, pctRanks, letter, ageOn, normName, slug, round, normTeam } from './util.js';
 import { makeScorer, starterDemand, isSuperflex } from './league.js';
 
 // Production multiplier for the coming season, by age at the start of that season.
@@ -141,7 +141,7 @@ export function buildModel(data, prospects, cfg, opts = {}) {
       id: p.sid || (p.gid ? 'g:' + p.gid : 'n:' + slug(p.n)), sid: p.sid, name: p.n, pos: p.p, team: p.t || 'FA',
       bd: p.bd, ageNow: p.age, college: p.col, draft: { year: p.dy, round: p.dr, ovr: p.do },
       mv: mvOf(p), ecr: p.e2, posEcr: p.ep, rosterStatus: p.st, depth: p.dc,
-      inj: p.inj || {}, injBody: p.ib || [], weeks: a.weeks, s: { cur: sCur, prev: sPrev },
+      inj: p.inj || {}, injBody: p.ib || [], weeks: a.weeks, s: { cur: sCur, prev: sPrev }, reportNow: p.iw || null,
       prospect: false, rookie: p.dy === nextSeason,
     };
     recs.push(r);
@@ -180,7 +180,7 @@ export function buildModel(data, prospects, cfg, opts = {}) {
     for (const r of recs) {
       const sp = r.sid && sleeper[r.sid];
       if (!sp) continue;
-      r.team = sp.team || r.team;
+      r.team = normTeam(sp.team) || r.team;
       r.injury = sp.injury_status || null;
       r.yearsExp = sp.years_exp;
       if (!r.bd && sp.birth_date) r.bd = sp.birth_date;
@@ -190,13 +190,13 @@ export function buildModel(data, prospects, cfg, opts = {}) {
       const k = normName(sp.full_name || `${sp.first_name} ${sp.last_name}`) + '|' + sp.position;
       const pr = byName.get(k);
       if (pr && pr.prospect) { // a prospect who has now been drafted into the NFL
-        Object.assign(pr, { id: sid, sid, team: sp.team, bd: sp.birth_date || null, prospect: false, rookie: true, yearsExp: 0 });
+        Object.assign(pr, { id: sid, sid, team: normTeam(sp.team), bd: sp.birth_date || null, prospect: false, rookie: true, yearsExp: 0 });
         known.add(sid);
         continue;
       }
       if (sp.years_exp === 0 && (sp.search_rank ?? 9999) < 600) {
         const r = {
-          id: sid, sid, name: sp.full_name || `${sp.first_name} ${sp.last_name}`, pos: sp.position, team: sp.team,
+          id: sid, sid, name: sp.full_name || `${sp.first_name} ${sp.last_name}`, pos: sp.position, team: normTeam(sp.team),
           bd: sp.birth_date || null, ageNow: sp.age, college: sp.college, draft: { year: nextSeason }, mv: 0, ecr: null,
           inj: {}, injBody: [], weeks: [], s: { cur: null, prev: null }, prospect: false, rookie: true, yearsExp: 0,
           injury: sp.injury_status || null,

@@ -35,3 +35,15 @@ export function ago(ts) {
   if (s < 3600) return `${Math.round(s / 60)}m ago`;
   return `${Math.round(s / 3600)}h ago`;
 }
+
+// Weekly lineup helpers
+export function kickTxt(g) {
+  if (!g) return '';
+  if (!g.kick) return g.day || '';
+  return g.kick.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+}
+export function fxTag(f) {
+  const pct = Math.round((f.mult - 1) * 100);
+  const txt = f.label === 'Injury' ? f.label : `${f.label}${pct ? ` ${pct > 0 ? '+' : ''}${pct}%` : ''}`;
+  return `<span class="tag ${f.tone === 'muted' ? '' : esc(f.tone)}" title="${esc(f.why)}">${esc(txt)}</span>`;
+}
