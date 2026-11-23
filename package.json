@@ -1,0 +1,11 @@
+{
+  "name": "draft-war-room",
+  "private": true,
+  "type": "module",
+  "description": "Dynasty draft assistant with live Sleeper sync",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "python3 -m http.server 8000",
+    "data": "python3 pipeline/fetch.py && python3 pipeline/build_data.py && python3 pipeline/build_prospects.py"
+  }
+}

@@ -1,0 +1,66 @@
+name: Refresh data & deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 10 * * *'   # daily, ~6am Eastern
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'push'
+        with:
+          python-version: '3.12'
+
+      - name: Rebuild player data
+        if: github.event_name != 'push'
+        run: |
+          pip install --quiet pandas numpy
+          python pipeline/fetch.py
+          python pipeline/build_data.py
+          python pipeline/build_prospects.py
+
+      - name: Commit refreshed data
+        if: github.event_name != 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || (git commit -m "Data refresh $(date -u +%F)" && git push)
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Unit tests
+        run: node --test tests/*.test.js
+
+      - name: Stage site
+        run: |
+          mkdir -p _site
+          cp -r index.html manifest.webmanifest icon-192.png icon-512.png css js data _site/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

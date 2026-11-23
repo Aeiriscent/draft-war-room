@@ -1,0 +1,603 @@
+{
+ "class": 2027,
+ "sources": [
+  {
+   "name": "Dynasty Nerds SF/TEP mock (Oct 6, 2026)",
+   "url": "https://www.dynastynerds.com/?p=171015"
+  },
+  {
+   "name": "Draft Sharks SF rookie rankings (Nov 4, 2026)",
+   "url": "https://www.draftsharks.com/article/2027-superflex-rookie-rankings"
+  }
+ ],
+ "players": [
+  {
+   "n": "Jeremiah Smith",
+   "p": "WR",
+   "col": "Ohio State",
+   "ranks": [
+    1,
+    1
+   ],
+   "cons": 1.0,
+   "note": null,
+   "rank": 1
+  },
+  {
+   "n": "Jadan Baugh",
+   "p": "RB",
+   "col": "Florida",
+   "ranks": [
+    2,
+    4
+   ],
+   "cons": 3.0,
+   "note": null,
+   "rank": 2
+  },
+  {
+   "n": "Darian Mensah",
+   "p": "QB",
+   "col": "Miami",
+   "ranks": [
+    5,
+    5
+   ],
+   "cons": 5.0,
+   "note": null,
+   "rank": 3
+  },
+  {
+   "n": "Kewan Lacy",
+   "p": "RB",
+   "col": "Ole Miss",
+   "ranks": [
+    3,
+    9
+   ],
+   "cons": 6.0,
+   "note": null,
+   "rank": 4
+  },
+  {
+   "n": "Charlie Becker",
+   "p": "WR",
+   "col": "Indiana",
+   "ranks": [
+    11,
+    2
+   ],
+   "cons": 6.5,
+   "note": null,
+   "rank": 5
+  },
+  {
+   "n": "Cam Coleman",
+   "p": "WR",
+   "col": "Texas",
+   "ranks": [
+    9,
+    6
+   ],
+   "cons": 7.5,
+   "note": null,
+   "rank": 6
+  },
+  {
+   "n": "Drew Mestemaker",
+   "p": "QB",
+   "col": "Oklahoma State",
+   "ranks": [
+    14,
+    3
+   ],
+   "cons": 8.5,
+   "note": null,
+   "rank": 7
+  },
+  {
+   "n": "Dante Moore",
+   "p": "QB",
+   "col": "Oregon",
+   "ranks": [
+    8,
+    10
+   ],
+   "cons": 9.0,
+   "note": null,
+   "rank": 8
+  },
+  {
+   "n": "Trinidad Chambliss",
+   "p": "QB",
+   "col": "Ole Miss",
+   "ranks": [
+    7,
+    11
+   ],
+   "cons": 9.0,
+   "note": null,
+   "rank": 9
+  },
+  {
+   "n": "Jamari Johnson",
+   "p": "TE",
+   "col": "Oregon",
+   "ranks": [
+    10,
+    12
+   ],
+   "cons": 11.0,
+   "note": null,
+   "rank": 10
+  },
+  {
+   "n": "KJ Duff",
+   "p": "WR",
+   "col": "Rutgers",
+   "ranks": [
+    15,
+    7
+   ],
+   "cons": 11.0,
+   "note": null,
+   "rank": 11
+  },
+  {
+   "n": "Nick Marsh",
+   "p": "WR",
+   "col": "Indiana",
+   "ranks": [
+    23,
+    8
+   ],
+   "cons": 15.5,
+   "note": null,
+   "rank": 12
+  },
+  {
+   "n": "Arch Manning",
+   "p": "QB",
+   "col": "Texas",
+   "ranks": [
+    4,
+    29
+   ],
+   "cons": 16.5,
+   "note": "Footballguys (Oct 21, 2026): likely to return to school or transfer. Confirm he declares.",
+   "rank": 13
+  },
+  {
+   "n": "CJ Carr",
+   "p": "QB",
+   "col": "Notre Dame",
+   "ranks": [
+    13,
+    20
+   ],
+   "cons": 16.5,
+   "note": null,
+   "rank": 14
+  },
+  {
+   "n": "Reed Harris",
+   "p": "WR",
+   "col": "Arizona State",
+   "ranks": [
+    22,
+    14
+   ],
+   "cons": 18.0,
+   "note": null,
+   "rank": 15
+  },
+  {
+   "n": "Trey'Dez Green",
+   "p": "TE",
+   "col": "LSU",
+   "ranks": [
+    24,
+    13
+   ],
+   "cons": 18.5,
+   "note": null,
+   "rank": 16
+  },
+  {
+   "n": "Ahmad Hardy",
+   "p": "RB",
+   "col": "Missouri",
+   "ranks": [
+    20,
+    18
+   ],
+   "cons": 19.0,
+   "note": null,
+   "rank": 17
+  },
+  {
+   "n": "Ryan Coleman-Williams",
+   "p": "WR",
+   "col": "Alabama",
+   "ranks": [
+    17,
+    22
+   ],
+   "cons": 19.5,
+   "note": null,
+   "rank": 18
+  },
+  {
+   "n": "Mark Fletcher Jr.",
+   "p": "RB",
+   "col": "Miami",
+   "ranks": [
+    21,
+    19
+   ],
+   "cons": 20.0,
+   "note": null,
+   "rank": 19
+  },
+  {
+   "n": "Ryan Wingo",
+   "p": "WR",
+   "col": "Texas",
+   "ranks": [
+    26,
+    23
+   ],
+   "cons": 24.5,
+   "note": null,
+   "rank": 20
+  },
+  {
+   "n": "Jayden Maiava",
+   "p": "QB",
+   "col": "USC",
+   "ranks": [
+    12,
+    38
+   ],
+   "cons": 25.0,
+   "note": null,
+   "rank": 21
+  },
+  {
+   "n": "Deuce Alexander",
+   "p": "WR",
+   "col": "Ole Miss",
+   "ranks": [
+    35,
+    16
+   ],
+   "cons": 25.5,
+   "note": null,
+   "rank": 22
+  },
+  {
+   "n": "Duce Robinson",
+   "p": "WR",
+   "col": "Florida State",
+   "ranks": [
+    34,
+    17
+   ],
+   "cons": 25.5,
+   "note": null,
+   "rank": 23
+  },
+  {
+   "n": "Julian Sayin",
+   "p": "QB",
+   "col": "Ohio State",
+   "ranks": [
+    6,
+    null
+   ],
+   "cons": 27.0,
+   "note": null,
+   "rank": 24
+  },
+  {
+   "n": "LaNorris Sellers",
+   "p": "QB",
+   "col": "South Carolina",
+   "ranks": [
+    28,
+    30
+   ],
+   "cons": 29.0,
+   "note": null,
+   "rank": 25
+  },
+  {
+   "n": "LJ Martin",
+   "p": "RB",
+   "col": "BYU",
+   "ranks": [
+    29,
+    33
+   ],
+   "cons": 31.0,
+   "note": null,
+   "rank": 26
+  },
+  {
+   "n": "Jackson Harris",
+   "p": "WR",
+   "col": "LSU",
+   "ranks": [
+    null,
+    15
+   ],
+   "cons": 31.5,
+   "note": null,
+   "rank": 27
+  },
+  {
+   "n": "Bryant Wesco Jr.",
+   "p": "WR",
+   "col": "Clemson",
+   "ranks": [
+    33,
+    31
+   ],
+   "cons": 32.0,
+   "note": null,
+   "rank": 28
+  },
+  {
+   "n": "Justice Haynes",
+   "p": "RB",
+   "col": "Georgia Tech",
+   "ranks": [
+    16,
+    null
+   ],
+   "cons": 32.0,
+   "note": null,
+   "rank": 29
+  },
+  {
+   "n": "Fluff Bothwell",
+   "p": "RB",
+   "col": "Mississippi State",
+   "ranks": [
+    18,
+    null
+   ],
+   "cons": 33.0,
+   "note": null,
+   "rank": 30
+  },
+  {
+   "n": "Nate Frazier",
+   "p": "RB",
+   "col": "Georgia",
+   "ranks": [
+    19,
+    null
+   ],
+   "cons": 33.5,
+   "note": null,
+   "rank": 31
+  },
+  {
+   "n": "Jamal Roberts",
+   "p": "RB",
+   "col": "Missouri",
+   "ranks": [
+    null,
+    21
+   ],
+   "cons": 34.5,
+   "note": null,
+   "rank": 32
+  },
+  {
+   "n": "Dylan Riley",
+   "p": "RB",
+   "col": "Boise State",
+   "ranks": [
+    null,
+    24
+   ],
+   "cons": 36.0,
+   "note": null,
+   "rank": 33
+  },
+  {
+   "n": "Austin Simmons",
+   "p": "QB",
+   "col": "Missouri",
+   "ranks": [
+    null,
+    25
+   ],
+   "cons": 36.5,
+   "note": null,
+   "rank": 34
+  },
+  {
+   "n": "Brendan Sorsby",
+   "p": "QB",
+   "col": "Cincinnati",
+   "ranks": [
+    25,
+    null
+   ],
+   "cons": 36.5,
+   "note": null,
+   "rank": 35
+  },
+  {
+   "n": "Isaac Brown",
+   "p": "RB",
+   "col": "Louisville",
+   "ranks": [
+    null,
+    26
+   ],
+   "cons": 37.0,
+   "note": null,
+   "rank": 36
+  },
+  {
+   "n": "Daylan Smothers",
+   "p": "RB",
+   "col": "Texas",
+   "ranks": [
+    27,
+    null
+   ],
+   "cons": 37.5,
+   "note": null,
+   "rank": 37
+  },
+  {
+   "n": "Isaiah Sategna III",
+   "p": "WR",
+   "col": "Oklahoma",
+   "ranks": [
+    null,
+    27
+   ],
+   "cons": 37.5,
+   "note": null,
+   "rank": 38
+  },
+  {
+   "n": "Omarion Miller",
+   "p": "WR",
+   "col": "Arizona State",
+   "ranks": [
+    36,
+    39
+   ],
+   "cons": 37.5,
+   "note": null,
+   "rank": 39
+  },
+  {
+   "n": "DJ Vonnahme",
+   "p": "TE",
+   "col": "Iowa",
+   "ranks": [
+    null,
+    28
+   ],
+   "cons": 38.0,
+   "note": null,
+   "rank": 40
+  },
+  {
+   "n": "Carlos Hernandez",
+   "p": "WR",
+   "col": "Wake Forest",
+   "ranks": [
+    30,
+    null
+   ],
+   "cons": 39.0,
+   "note": null,
+   "rank": 41
+  },
+  {
+   "n": "Nico Iamaleava",
+   "p": "QB",
+   "col": "UCLA",
+   "ranks": [
+    31,
+    null
+   ],
+   "cons": 39.5,
+   "note": null,
+   "rank": 42
+  },
+  {
+   "n": "Anthony Evans III",
+   "p": "WR",
+   "col": "Mississippi State",
+   "ranks": [
+    32,
+    null
+   ],
+   "cons": 40.0,
+   "note": null,
+   "rank": 43
+  },
+  {
+   "n": "Antwan Raymond",
+   "p": "RB",
+   "col": "Rutgers",
+   "ranks": [
+    null,
+    32
+   ],
+   "cons": 40.0,
+   "note": null,
+   "rank": 44
+  },
+  {
+   "n": "Wyatt Young",
+   "p": "WR",
+   "col": "Oklahoma State",
+   "ranks": [
+    null,
+    34
+   ],
+   "cons": 41.0,
+   "note": null,
+   "rank": 45
+  },
+  {
+   "n": "Mario Craver",
+   "p": "WR",
+   "col": "Texas A&M",
+   "ranks": [
+    null,
+    35
+   ],
+   "cons": 41.5,
+   "note": null,
+   "rank": 46
+  },
+  {
+   "n": "Luke Reynolds",
+   "p": "TE",
+   "col": "Virginia Tech",
+   "ranks": [
+    null,
+    36
+   ],
+   "cons": 42.0,
+   "note": null,
+   "rank": 47
+  },
+  {
+   "n": "Cameron Dickey",
+   "p": "RB",
+   "col": "Texas Tech",
+   "ranks": [
+    null,
+    37
+   ],
+   "cons": 42.5,
+   "note": null,
+   "rank": 48
+  },
+  {
+   "n": "Raleek Brown",
+   "p": "RB",
+   "col": "Texas",
+   "ranks": [
+    null,
+    40
+   ],
+   "cons": 44.0,
+   "note": null,
+   "rank": 49
+  }
+ ]
+}
