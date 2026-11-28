@@ -56,7 +56,9 @@ const lineup3 = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'FLEX', 'SUPE
 const cur = data.players.filter((p) => p.sid && p.w.some((r) => 2000 + r[0] === data.meta.season)).sort((a, b) => b.v1 - a.v1 || b.v2 - a.v2);
 const DEFS = ['BUF', 'KC', 'PHI', 'DAL', 'SF', 'DET', 'BAL', 'MIA', 'GB', 'LAR'];
 DEFS.forEach((t, i) => { players[t] = { first_name: t, last_name: 'D/ST', position: 'DEF', team: t, status: 'Active' }; players['K' + i] = { full_name: `Kicker ${t}`, position: 'K', team: t, status: 'Active' }; });
-const rosters3 = users2.map((u, i) => ({ roster_id: i + 1, owner_id: u.user_id, players: [...cur.filter((_, k) => k % T2 === i).slice(0, 17).map((p) => p.sid), 'K' + i, DEFS[i]], reserve: [], taxi: [] }));
+const W3 = [4, 8, 7, 5, 9, 6, 3, 10, 2, 6];
+const rosters3 = users2.map((u, i) => ({ roster_id: i + 1, owner_id: u.user_id, players: [...cur.filter((_, k) => k % T2 === i).slice(0, 17).map((p) => p.sid), 'K' + i, DEFS[i]], reserve: [], taxi: [],
+  settings: { wins: W3[i], losses: 12 - W3[i], fpts: 1300 + i * 17 } }));
 const byPos = (ids, pos) => ids.filter((id) => players[id]?.position === pos);
 function setStarters(r, i) {
   const ids = [...r.players], used = new Set(), take = (ok, worst = false) => {
@@ -91,6 +93,7 @@ function api(url) {
   if (path === `/league/${L3}/users`) return users2;
   if (path === `/league/${L3}/drafts`) return [];
   if (path === `/league/${L3}/matchups/12`) return matchups3;
+  if (path === `/league/${L3}/traded_picks`) return [{ season: '2027', round: 1, roster_id: 9, owner_id: 1, previous_owner_id: 9 }, { season: '2027', round: 2, roster_id: 1, owner_id: 4, previous_owner_id: 1 }];
   if (/^\/league\/300300300\/matchups\/\d+$/.test(path)) return [];
   if (path === '/user/testuser') return { user_id: 'U1', display_name: 'testuser' };
   if (/^\/user\/U\d+$/.test(path)) return users.find((u) => path.endsWith(u.user_id));
@@ -108,6 +111,7 @@ function api(url) {
   if (path === '/league/L100/rosters') return rosters;
   if (path === '/league/L100/users') return users;
   if (path === '/league/L100/drafts') return [draft()];
+  if (path === '/league/L100/traded_picks') return [];
   if (path === '/draft/D1') return draft();
   if (path === '/draft/D1/picks') return picks();
   if (path === '/draft/D1/traded_picks') return [{ season: '2027', round: 4, roster_id: 2, owner_id: 1, previous_owner_id: 2 }];
@@ -246,6 +250,50 @@ await page.waitForTimeout(300);
 console.log('other team matchup:', (await page.textContent('.match')).replace(/\s+/g, ' ').trim());
 await page.selectOption('[data-lu=luTeam]', '1');
 await page.click('[data-act=lu-mode][data-v=auto]');
+// roster breakdown + waiver wire
+await page.click('[data-act=lu-seg][data-v=roster]');
+await page.waitForSelector('.pcard');
+console.log('roster cards:', await page.locator('.pcard').count());
+await page.click('.pcard >> nth=0 >> summary');
+await page.waitForTimeout(200);
+console.log('first card:', (await page.locator('.pcard >> nth=0').textContent()).replace(/\s+/g, ' ').trim().slice(0, 700));
+await page.screenshot({ path: `${OUT}/17-roster-breakdown.png`, fullPage: false });
+await page.click('[data-act=lu-seg][data-v=waiver]');
+await page.waitForSelector('.wv-row');
+console.log('waiver rows:', await page.locator('.wv-row').count(), '|', (await page.locator('.wv-row >> nth=0').textContent()).replace(/\s+/g, ' ').trim().slice(0, 250));
+await page.screenshot({ path: `${OUT}/18-waiver.png` });
+await page.click('[data-act=lu-seg][data-v=week]');
+// trades
+await page.click('.subnav >> text=Trades');
+await page.waitForSelector('.tr-head');
+console.log('trade head:', (await page.textContent('.tr-head')).replace(/\s+/g, ' ').trim());
+console.log('ready offers:', await page.locator('.tcard').count(), '| sells:', await page.locator('[data-act=tr-shop]').count(), '| buys:', await page.locator('[data-act=tr-ideas-target]').count());
+await page.screenshot({ path: `${OUT}/19-trades-ideas.png`, fullPage: true });
+if (await page.locator('[data-act=tr-ideas-target]').count()) {
+  await page.click('[data-act=tr-ideas-target] >> nth=0');
+  await page.waitForTimeout(300);
+  console.log('target offers:', await page.locator('.idea-offers .tcard').count());
+}
+if (await page.locator('[data-act=tr-shop]').count()) {
+  await page.click('[data-act=tr-shop] >> nth=0');
+  await page.waitForTimeout(300);
+  console.log('shop offers:', await page.locator('.idea-offers .tcard').count());
+}
+await page.click('[data-act=tr-seg][data-v=builder]');
+await page.waitForSelector('.as-row');
+await page.click('.lu-grid .panel >> nth=0 >> .as-row >> nth=2');
+await page.click('.lu-grid .panel >> nth=1 >> .as-row >> nth=1');
+await page.waitForSelector('.tb-eval .cmp');
+console.log('builder eval:', (await page.textContent('.tb-eval')).replace(/\s+/g, ' ').trim().slice(0, 600));
+await page.screenshot({ path: `${OUT}/20-trade-builder.png`, fullPage: true });
+await page.click('[data-act=tr-seg][data-v=chart]');
+await page.waitForSelector('.scroll table tbody tr');
+console.log('value chart rows:', await page.locator('.scroll table tbody tr').count());
+await page.click('.scroll table tbody tr.click >> nth=0');
+await page.waitForSelector('#drawer:not([hidden]) .outlook');
+console.log('drawer sections:', await page.locator('#drawer .block h3').allTextContents());
+await page.screenshot({ path: `${OUT}/21-drawer-outlook.png`, fullPage: false });
+await page.keyboard.press('Escape');
 // method
 await page.click('text=How it works');
 await page.screenshot({ path: `${OUT}/10-method.png` });
@@ -275,6 +323,22 @@ await m.waitForSelector('.match', { timeout: 20000 });
 await m.waitForTimeout(500);
 await m.screenshot({ path: `${OUT}/16-mobile-lineup.png`, fullPage: true });
 console.log('mobile lineup overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
+await m.click('[data-act=lu-seg][data-v=roster]');
+await m.waitForSelector('.pcard');
+await m.click('.pcard >> nth=0 >> summary');
+await m.screenshot({ path: `${OUT}/22-mobile-roster.png`, fullPage: false });
+console.log('mobile roster overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
+await m.click('.subnav >> text=Trades');
+await m.waitForSelector('.tr-head');
+await m.screenshot({ path: `${OUT}/23-mobile-trades.png`, fullPage: true });
+console.log('mobile trades overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
+await m.click('[data-act=tr-seg][data-v=builder]');
+await m.waitForSelector('.as-row');
+await m.click('.lu-grid .panel >> nth=0 >> .as-row >> nth=1');
+await m.click('.lu-grid .panel >> nth=1 >> .as-row >> nth=0');
+await m.waitForSelector('.tb-eval .cmp');
+await m.screenshot({ path: `${OUT}/24-mobile-builder.png`, fullPage: false });
+console.log('mobile builder overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
 
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();

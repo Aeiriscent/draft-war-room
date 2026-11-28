@@ -107,6 +107,9 @@ export function buildModel(data, prospects, cfg, opts = {}) {
     weeks: p.w.map((r) => ({
       s: 2000 + r[0], wk: r[1], tm: data.teams[r[2]], opp: data.teams[r[3]], pts: scorer(r, sc, p.p),
       snap: r[FI.snap], ts: r[FI.ts], cs: r[FI.cs], tgt: r[FI.tgt], car: r[FI.car], rec: r[FI.rec], att: r[FI.att],
+      td: (r[FI.ptd] || 0) + (r[FI.rtd] || 0) + (r[FI.retd] || 0),
+      tdPts: (r[FI.ptd] || 0) * (sc.pass_td ?? 4) + (r[FI.rtd] || 0) * (sc.rush_td ?? 6) + (r[FI.retd] || 0) * (sc.rec_td ?? 6),
+      yd: (r[FI.pyd] || 0) + (r[FI.ryd] || 0) + (r[FI.reyd] || 0),
     })),
   }));
 
@@ -348,7 +351,14 @@ export function buildModel(data, prospects, cfg, opts = {}) {
   }
 
   const byId = new Map(recs.map((r) => [r.id, r]));
-  const model = { profiles: recs, byId, demand, repl, thr, nextSeason, cur, prev, sf, tep, cfg };
+  // what a rookie pick slot (1 = 1.01) is worth on the market, from the consensus ECR of each pick slot
+  const pickEcr = data.pickEcr || [];
+  const pickValue = (overall) => {
+    const k = overall - 1;
+    const ecr = k < pickEcr.length ? pickEcr[k] : (pickEcr[pickEcr.length - 1] || 150) + (k - pickEcr.length + 1) * 8;
+    return valueAtEcr(ecr);
+  };
+  const model = { profiles: recs, byId, demand, repl, thr, nextSeason, cur, prev, sf, tep, cfg, pickValue };
   rank(model, { horizon: 0.5, marketTrust: 0.4 });
   for (const r of recs) r.flags = flagsFor(r, model);
   return model;

@@ -1,6 +1,7 @@
 // Page views. Each returns an HTML string; app.js wires events through data-act attributes.
 import { esc, fmt, pos, grade, tag, playerCell, riskTxt, ageTxt, ago, kickTxt, fxTag } from './h.js';
 import { SLOT_OK } from '../weekly.js';
+import { rosterSection, waiverSection } from './tradeviews.js';
 import { pickLabel } from '../draft.js';
 import { bestLineup } from '../model.js';
 import { SLOT_LABEL, describeScoring } from '../league.js';
@@ -304,6 +305,20 @@ export function methodView(C) {
     <li><b>Lineup style:</b> Max points ranks by expected points; Safe floor and Upside shift by about half a standard deviation. Auto picks whichever gives the highest chance to win: favorites get steadier lineups, underdogs get more variance.</li>
     <li><b>Locks:</b> players whose game has kicked off stay where they are in Sleeper; finished games use actual points.</li>
   </ol><p class="small muted">Injury designations come live from Sleeper (refreshed up to twice a day, or tap the injury chip to refresh). Lines refresh from nflverse every few hours, weather from Open-Meteo hourly. Always confirm inactives about 90 minutes before kickoff.</p></div>
+  <div class="panel" style="margin-top:14px"><h2>Player outlooks</h2><ol class="small">
+    <li><b>How he’s producing:</b> this season’s points per game in your scoring and where that ranks, his share of team targets or carries, snap share, how often he’s been startable or a top-half starter, his typical weekly range, and how the last four games compare with before.</li>
+    <li><b>Will it last:</b> touchdowns are compared with what his volume normally produces at his position. Players scoring far above that rate are flagged to cool off, and about half the gap comes off his rest-of-season projection; players far below it get the bump. Efficiency (yards per target, touch or play), the direction of his role, his offense and his health round it out.</li>
+    <li><b>Rest of season:</b> recent form, adjusted for each remaining opponent’s points allowed to his position and for touchdown luck, through your league’s fantasy playoffs. Weeks are colored soft or tough; playoff weeks are underlined.</li>
+    <li><b>Next three seasons:</b> the model’s projected PPG for each year and the position rank that implies, his career phase from age (ascending, prime, late prime, decline), draft capital, and upside/downside scenarios built from his recent role and his biggest risks.</li>
+  </ol></div>
+  <div class="panel" style="margin-top:14px"><h2>Trade values and suggestions</h2><ol class="small">
+    <li><b>Trade value</b> is the dynasty market price (FantasyPros consensus via DynastyProcess), using superflex values in superflex leagues and adding 15% per point of TE premium for tight ends. It’s what other managers will pay.</li>
+    <li><b>The model’s view</b> re-ranks players within each position by production: “this season” uses value over a replacement starter for the rest of this season and next season; “long term” uses the three-year projection. Each player gets the market price of the slot the model puts him in, so the model can disagree about who is better, not about how the market prices positions.</li>
+    <li><b>Draft picks</b> are priced from the consensus value of each rookie pick slot. Next year’s picks use a projected slot from the current standings (worst record picks first); later years use a mid-round slot, discounted 10% per year.</li>
+    <li><b>Team timeline:</b> each team is a Contender, Middle or Rebuilding from its record and lineup strength. Rebuilders value picks and young players more; contenders value this season’s production more. You can override your own.</li>
+    <li><b>Grading a trade:</b> packages of several smaller pieces are discounted (the best player in a deal carries a premium). “Realistic” is judged on market value tilted by the other team’s timeline and needs; “good for you” uses the model on your timeline, blended with the market by your Model ↔ Market slider, plus the change to your starting lineup.</li>
+    <li><b>Suggestions:</b> sell candidates are players the market values above what they’re worth to you (age, touchdown luck, bench depth, timeline). Buy targets are the reverse, with motivated sellers first. Ready-made offers search your expendable players and picks for packages the other team should accept and that leave you better off.</li>
+  </ol></div>
   </div>`;
 }
 
@@ -312,6 +327,7 @@ const MODES = [['auto', 'Auto'], ['safe', 'Safe floor'], ['balanced', 'Max point
 const SLOT_TXT = { SUPER_FLEX: 'SF', FLEX: 'FLEX', REC_FLEX: 'W/T', WRRB_FLEX: 'W/R', DEF: 'DEF', K: 'K' };
 const posBadge = (p) => (['QB', 'RB', 'WR', 'TE'].includes(p) ? pos(p) : `<span class="pos">${esc(p)}</span>`);
 const pctTxt = (x) => (x == null ? '–' : `${Math.round(x * 100)}%`);
+const lastName = (n) => { const w = n.split(' ').filter((x) => !/^(Jr\.?|Sr\.?|II|III|IV|V)$/.test(x)); return w[w.length - 1] || n; };
 
 function topFactors(e, n = 3) {
   const fx = [...e.factors].sort((a, b) => Math.abs(b.mult - 1) - Math.abs(a.mult - 1));
@@ -375,6 +391,9 @@ export function lineupView(C, lg, X) {
     <button class="tag" data-act="lu-injuries" title="Re-pull injury designations from Sleeper">Injury statuses ${esc(ago(s.injAt))} ↻</button>
     <span class="tag" data-ago="${s.at}">Updated ${esc(ago(s.at))}</span>${s.loading ? tag('Refreshing…', 'info') : ''}</div>`;
 
+  const seg = `<div class="chips subseg">${[['week', 'This week'], ['roster', 'Roster breakdown'], ['waiver', 'Waiver wire']].map(([k, n]) => `<button class="chip ${C.ui.luSeg === k ? 'on' : ''}" data-act="lu-seg" data-v="${k}">${n}</button>`).join('')}</div>`;
+  if (C.ui.luSeg === 'roster' && X.roster) return controls + seg + rosterSection(C, lg, X);
+  if (C.ui.luSeg === 'waiver' && X.waiver) return controls + seg + waiverSection(C, lg, X);
   const me = X.me, opp = X.opp, rec = X.rec;
   const meName = me.team?.name || 'Team';
   const match = `<div class="panel">
@@ -395,7 +414,7 @@ export function lineupView(C, lg, X) {
       const gain = sw.in.exp - (sw.out ? sw.out.exp : 0);
       const modeNote = gain < 0 && X.mode !== 'balanced' ? `<li class="muted">A touch lower on average, but ${X.mode === 'safe' ? 'a steadier floor' : 'more ceiling'}, which suits this matchup.</li>` : '';
       const why = [...topFactors(sw.in, 2).filter((f) => f.tone === 'good').map((f) => `<li class="good">${esc(f.why)}</li>`),
-        ...(sw.out ? topFactors(sw.out, 3).filter((f) => f.tone === 'bad' || f.tone === 'warn').map((f) => `<li class="bad">${esc(sw.out.p.name.split(' ').slice(-1)[0])}: ${esc(f.why)}</li>`) : []),
+        ...(sw.out ? topFactors(sw.out, 3).filter((f) => f.tone === 'bad' || f.tone === 'warn').map((f) => `<li class="bad">${esc(lastName(sw.out.p.name))}: ${esc(f.why)}</li>`) : []),
         ...(sw.out?.bye ? [`<li class="bad">${esc(sw.out.p.name)} is on bye.</li>`] : [])].slice(0, 4).join('') + modeNote;
       return `<div class="rec"><div class="row1">Start ${posBadge(sw.in.pos)} <b>${esc(sw.in.p.name)}</b> <span class="score">${gain >= 0 ? '+' : '−'}${fmt(Math.abs(gain))}</span></div>
         <div class="small muted">${sw.out ? `instead of ${esc(sw.out.p.name)} (${fmt(sw.out.exp)})` : 'in an empty slot'} · ${fmt(sw.in.exp)} projected</div>${why ? `<ul>${why}</ul>` : ''}</div>`;
@@ -409,7 +428,7 @@ export function lineupView(C, lg, X) {
   const bench = me.entries.filter((e) => !recIds.has(e.p.id)).sort((a, b) => b.exp - a.exp).map((e) => luRow(e, curIds.has(e.p.id) ? 'SIT' : 'BN')).join('');
   const oppList = opp ? `<details class="panel" style="margin-top:14px"><summary><b>${esc(opp.team?.name || 'Opponent')}’s projected lineup</b> <span class="muted small">${fmt(X.oppBest.total)} pts</span></summary>
     ${X.oppBest.filled.map((e, i) => luRow(e, X.oppBest.slots[i])).join('')}</details>` : '';
-  return `${controls}<div class="lu-grid">${match}${changes}</div>
+  return `${controls}${seg}<div class="lu-grid">${match}${changes}</div>
     <div class="lu-grid"><div class="panel"><h3>Recommended starters <span class="muted small">gold bar = change from Sleeper</span></h3>${starters}</div>
     <div class="panel"><h3>Bench</h3>${bench || '<p class="muted">No bench players.</p>'}</div></div>${oppList}
     <p class="small muted">Each projection blends Sleeper’s projection (rescored in this league’s scoring) with recent form adjusted for the opposing defense, the Vegas team total and spread, home field, weather at kickoff, teammate injuries, QB changes and role trends, then multiplies by the chance he plays given his injury and practice status. Tap a player for the full breakdown.</p>`;

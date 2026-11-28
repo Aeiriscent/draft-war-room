@@ -1,6 +1,8 @@
 // App controller: state, league tabs, live Sleeper sync, practice-draft engine, events.
 import { loadData, refreshMarket, loadSleeperPlayers, loadSchedule, loadWeather, sleeperPlayersAt } from '../data.js';
 import { buildWeek, projectWeek, optimize, winProb, gamesForWeek, SLOT_OK } from '../weekly.js';
+import { outlookContext, playerOutlook } from '../outlook.js';
+import { tradeContext, liteTrade, valueReport, evaluateTrade, offersFor, shopAsset, sellCandidates, buyTargets, readyOffers, myVal } from '../trade.js';
 import { normTeam, median, normCdf } from '../util.js';
 import { buildModel, rank } from '../model.js';
 import { normalizeConfig, scoringFromSleeper, lineupFromSleeper, SLOT_ELIG } from '../league.js';
@@ -11,6 +13,7 @@ import { PERSONAS, assignPersonas, cpuPick, rng } from '../sim.js';
 import { loadState, saveState, download } from '../store.js';
 import { playerHTML } from './player.js';
 import { rankingsView, boardView, teamsView, settingsView, methodView, lineupView } from './views.js';
+import { tradesView } from './tradeviews.js';
 import { esc, toast, ago } from './h.js';
 
 const $ = (s) => document.querySelector(s);
@@ -19,7 +22,7 @@ const S = {
   data: null, prospects: null, sleeperDB: null, models: new Map(), live: new Map(),
   page: 'league', drawer: null, modal: null,
 };
-const ui = { pos: 'ALL', q: '', sort: 'rank', flip: false, limit: 150, hideTaken: true, tagged: false, bpos: 'ALL', bq: '', seg: 'recs', luTeam: null, luWeek: null, luMode: 'auto' };
+const ui = { pos: 'ALL', q: '', sort: 'rank', flip: false, limit: 150, hideTaken: true, tagged: false, bpos: 'ALL', bq: '', seg: 'recs', luTeam: null, luWeek: null, luMode: 'auto', luSeg: 'week', luOpen: false, wvPos: 'ALL', trSeg: 'ideas', trPartner: null, trGive: [], trGet: [], trShop: null, trTarget: null, trMe: null, vcPos: 'ALL', vcTeam: 'ALL' };
 const C = {
   ui, get tags() { return S.p.tags; }, get data() { return S.data; },
   live: (lg) => S.live.get(lg.id),
@@ -166,9 +169,9 @@ async function sync(lg, { full = false, quiet = false } = {}) {
     if (lg.kind === 'sleeper') {
       if (full || !L.league) {
         const id = lg.sleeper.leagueId;
-        const [league, rosters, users, drafts] = await Promise.all([sleeper.league(id), sleeper.rosters(id), sleeper.users(id), sleeper.leagueDrafts(id)]);
+        const [league, rosters, users, drafts, ltraded] = await Promise.all([sleeper.league(id), sleeper.rosters(id), sleeper.users(id), sleeper.leagueDrafts(id), sleeper.leagueTraded(id).catch(() => [])]);
         if (!league) throw new Error('League not found');
-        Object.assign(L, { league, rosters: rosters || [], users: users || [], drafts: drafts || [] });
+        Object.assign(L, { league, rosters: rosters || [], users: users || [], drafts: drafts || [], ltraded: ltraded || [], rostersAt: Date.now() });
         if (!lg.configSet) { applySleeperConfig(lg, league); lg.configSet = true; }
         if (!lg.phaseSet) {
           const filled = (rosters || []).some((r) => (r.players || []).length > 0);
@@ -427,7 +430,7 @@ function lineupInfo(lg) {
   }
   const D2 = D;
   return {
-    week, curWeek, season: D.season, teams, rid, mine: mine?.rid, me, opp, oppBest, mode, why, rec, swaps, empties,
+    week, curWeek, season: D.season, teams, rid, mine: mine?.rid, me, opp, oppBest, mode, why, rec, swaps, empties, entryFor,
     winNow: oppBest ? wp(me.current) : null, winRec: oppBest ? wp(rec) : null, medianInfo, slots,
     sources: {
       at: D2.at, proj: Object.keys(D2.projections || {}).length,
@@ -436,6 +439,115 @@ function lineupInfo(lg) {
       injAt: sleeperPlayersAt, loading: D2.loading,
     },
   };
+}
+
+
+// ---------------- outlooks, trade values, trades ----------------
+function outlookCtx(lg) {
+  const M = getModel(lg);
+  const L = S.live.get(lg.id);
+  const st = S.nfl?.state;
+  const nextWeek = st && String(st.season) === String(M.cur) && st.season_type === 'regular' ? Math.max(1, st.week || 1) : undefined;
+  const ps = +(L?.league?.settings?.playoff_week_start) || 15;
+  return outlookContext(M, S.data, { nextWeek, playoffStart: ps, lastWeek: ps + 2 });
+}
+const statusFor = (p) => {
+  const sp = p.sid && S.sleeperDB?.[p.sid];
+  return sp ? { injury: sp.injury_status || null, body: sp.injury_body_part || null } : {};
+};
+function outlookOf(lg, p) {
+  return playerOutlook(p, getModel(lg), outlookCtx(lg), statusFor(p));
+}
+function myRosterId(lg, L) {
+  const uid = lg.sleeper?.userId;
+  const r = (L?.rosters || []).find((x) => x.owner_id === uid || (x.co_owners || []).includes(uid));
+  return r?.roster_id ?? null;
+}
+function tradeCtx(lg) {
+  const L = S.live.get(lg.id);
+  if (lg.kind !== 'sleeper' || !L?.league || !(L.rosters || []).some((r) => (r.players || []).length)) return null;
+  const M = getModel(lg), X = outlookCtx(lg);
+  const myRid = myRosterId(lg, L) ?? (+ui.trMe || L.rosters[0]?.roster_id);
+  const m = S.models.get(lg.id);
+  const key = [m?.key, m?.w, L.rostersAt, X.nextWeek, lg.tradeWindow || 'auto', (L.ltraded || []).length, myRid].join('|');
+  if (L.T && L.Tkey === key) return L.T;
+  L.T = tradeContext(M, X, { league: L.league, rosters: L.rosters, users: L.users, traded: L.ltraded }, { myRid, myWindow: lg.tradeWindow || 'auto' });
+  L.Tkey = key;
+  L.Tcache = {};
+  return L.T;
+}
+function cached(lg, k, f) {
+  const L = S.live.get(lg.id);
+  L.Tcache ||= {};
+  if (!(k in L.Tcache)) L.Tcache[k] = f();
+  return L.Tcache[k];
+}
+function valueOf(lg, id) {
+  const T = tradeCtx(lg) || liteTrade(getModel(lg), outlookCtx(lg));
+  return valueReport(T, id);
+}
+
+function tradesInfo(lg) {
+  const L = S.live.get(lg.id);
+  if (!L?.league) return { msg: L?.error ? 'error' : 'loading', error: L?.error };
+  const T = tradeCtx(lg);
+  if (!T) return { msg: 'no-rosters' };
+  const me = T.me;
+  const out = { T, me, mineKnown: myRosterId(lg, L) != null, window: lg.tradeWindow || 'auto' };
+  out.sells = cached(lg, 'sell', () => sellCandidates(T, me));
+  out.buys = cached(lg, 'buy', () => buyTargets(T, me));
+  if (ui.trSeg === 'ideas') {
+    out.ready = cached(lg, 'ready', () => readyOffers(T, me));
+    if (ui.trShop && T.assets.get(ui.trShop)?.owner === me.rid) out.shop = { a: T.assets.get(ui.trShop), offers: cached(lg, 'shop:' + ui.trShop, () => shopAsset(T, me, ui.trShop)) };
+    if (ui.trTarget && T.assets.get(ui.trTarget) && T.assets.get(ui.trTarget).owner !== me.rid) out.target = { a: T.assets.get(ui.trTarget), offers: cached(lg, 'offers:' + ui.trTarget, () => offersFor(T, me, ui.trTarget)) };
+  }
+  if (ui.trSeg === 'builder') {
+    const partner = T.byRid.get(+ui.trPartner) || T.teams.find((t) => t.rid !== me.rid);
+    ui.trPartner = partner?.rid ?? null;
+    ui.trGive = ui.trGive.filter((id) => T.assets.get(id)?.owner === me.rid);
+    ui.trGet = ui.trGet.filter((id) => T.assets.get(id)?.owner === partner?.rid);
+    out.partner = partner;
+    if (partner && (ui.trGive.length || ui.trGet.length)) out.ev = evaluateTrade(T, me, partner, ui.trGive, ui.trGet);
+    if (partner && ui.trGet.length === 1 && !ui.trGive.length) out.suggest = cached(lg, 'offers:' + ui.trGet[0], () => offersFor(T, me, ui.trGet[0]));
+  }
+  if (ui.trSeg === 'chart') {
+    const h = me.window.h;
+    out.chart = [...T.assets.values()].filter((a) => (ui.vcPos === 'ALL' || (ui.vcPos === 'PICK' ? a.kind === 'pick' : a.pos === ui.vcPos)) && (ui.vcTeam === 'ALL' || a.owner === +ui.vcTeam))
+      .sort((x, y) => (y.value || 0) - (x.value || 0)).slice(0, 200)
+      .map((a) => ({ a, own: T.byRid.get(a.owner), forMe: myVal(T, a, h) }));
+  }
+  return out;
+}
+
+function rosterInfo(lg, X) {
+  // every player on the selected team with his outlook and trade value
+  const M = getModel(lg);
+  const recIds = new Map(X.rec.filled.map((e, i) => [e?.p.id, X.rec.slots[i]]).filter(([id]) => id));
+  const list = X.me.entries.filter((e) => !e.p.stub).map((e) => ({ e, slot: recIds.get(e.p.id) || null, o: outlookOf(lg, M.byId.get(e.p.id) || e.p), r: valueOf(lg, e.p.id) }));
+  list.sort((a, b) => (b.slot ? 1 : 0) - (a.slot ? 1 : 0) || (b.o.ros?.ppg ?? 0) - (a.o.ros?.ppg ?? 0) || (b.r?.a.value ?? 0) - (a.r?.a.value ?? 0));
+  return list;
+}
+
+function waiverInfo(lg, X) {
+  const L = S.live.get(lg.id);
+  const M = getModel(lg), OX = outlookCtx(lg);
+  const owned = new Set((L.rosters || []).flatMap((r) => [...(r.players || []), ...(r.reserve || []), ...(r.taxi || [])].map(String)));
+  const vals = liteTrade(M, OX).vals;
+  const avail = M.profiles.filter((p) => !p.prospect && p.sid && !owned.has(p.sid) && (!S.sleeperDB || S.sleeperDB[p.sid]?.team));
+  // weakest starter I'd replace at each position this week, and over the rest of the season
+  const worst = (pos) => {
+    const cands = X.rec.filled.map((e, i) => ({ e, s: X.rec.slots[i] })).filter(({ e, s }) => e && !e.locked && (SLOT_OK[s] || []).includes(pos));
+    return cands.sort((a, b) => a.e.exp - b.e.exp)[0]?.e || null;
+  };
+  const rows = avail.filter((p) => OX.ros.get(p.id)).map((p) => {
+    const e = X.entryFor(p.id), R = OX.ros.get(p.id), w = worst(p.pos);
+    return { p, e, R, o: null, v: vals.get(p.id), over: w && e.exp > w.exp + 0.5 ? { who: w, gain: e.exp - w.exp } : null };
+  }).filter((x) => ui.wvPos === 'ALL' || x.p.pos === ui.wvPos)
+    .sort((a, b) => (b.R.ppg + 0.5 * b.e.exp) - (a.R.ppg + 0.5 * a.e.exp)).slice(0, 20);
+  for (const r of rows) r.o = playerOutlook(r.p, M, OX, statusFor(r.p));
+  const stash = avail.filter((p) => (p.age ?? 30) <= 24.5 && vals.get(p.id)).sort((a, b) => vals.get(b.id).dyn - vals.get(a.id).dyn).slice(0, 8)
+    .map((p) => ({ p, v: vals.get(p.id), o: playerOutlook(p, M, OX, statusFor(p)) }));
+  return { rows, stash };
 }
 
 // ---------------- practice engine ----------------
@@ -493,7 +605,7 @@ function subnav(lg, B, v = S.p.view) {
   const kinds = { sleeper: 'Sleeper league', mock: 'Sleeper draft', practice: 'Practice draft', manual: 'Draft tracker' };
   const meta = `${kinds[lg.kind]} · ${lg.config.teams} teams · ${lg.phase === 'existing' ? 'existing league' : 'startup'}`;
   const views = [['board', 'Draft board'], ['rankings', 'Rankings'], ['teams', 'Teams'], ['settings', 'League settings']];
-  if (lg.kind === 'sleeper' && lg.phase === 'existing') views.unshift(['lineup', 'Lineup']);
+  if (lg.kind === 'sleeper' && lg.phase === 'existing') views.unshift(['lineup', 'Lineup'], ['trades', 'Trades']);
   return `<nav class="subnav">${views
     .map(([k, n]) => `<button class="${v === k ? 'on' : ''}" data-act="view" data-v="${k}">${n}</button>`).join('')}<span class="meta">${esc(meta)}</span></nav>`;
 }
@@ -528,7 +640,14 @@ function render() {
       let v = S.p.view;
       if (v === 'lineup' && !(lg.kind === 'sleeper' && lg.phase === 'existing')) v = 'board';
       let body;
-      if (v === 'lineup') { const X = lineupInfo(lg); S.lastLU = X; body = lineupView(C, lg, X); } else body = v === 'rankings' ? rankingsView(C, lg, B) : v === 'teams' ? teamsView(C, lg, B) : v === 'settings' ? settingsView(C, lg, B) : boardView(C, lg, B);
+      if (v === 'trades' && !(lg.kind === 'sleeper' && lg.phase === 'existing')) v = 'board';
+      if (v === 'lineup') {
+        const X = lineupInfo(lg); S.lastLU = X;
+        if (X.me && ui.luSeg === 'roster') X.roster = rosterInfo(lg, X);
+        if (X.me && ui.luSeg === 'waiver') X.waiver = waiverInfo(lg, X);
+        body = lineupView(C, lg, X);
+      } else if (v === 'trades') body = tradesView(C, lg, tradesInfo(lg));
+      else body = v === 'rankings' ? rankingsView(C, lg, B) : v === 'teams' ? teamsView(C, lg, B) : v === 'settings' ? settingsView(C, lg, B) : boardView(C, lg, B);
       main.innerHTML = subnav(lg, B, v) + `<div class="wrap">${body}</div>`;
     }
   }
@@ -557,6 +676,9 @@ function renderDrawer() {
     canDraft: !taken && !!oc && ((lg.kind === 'practice' && oc.owner === B.ctx.myKey) || lg.kind === 'manual'),
     canMark: !taken && !!oc && (lg.kind === 'sleeper' || lg.kind === 'mock'),
     week: S.p.view === 'lineup' ? findWeekEntry(p.id) : null,
+    outlook: outlookOf(lg, p),
+    value: p.prospect ? null : valueOf(lg, p.id),
+    canTrade: !!tradeCtx(lg),
   });
   d.hidden = false; scrim.hidden = false;
   d.scrollTop = keep;
@@ -802,6 +924,36 @@ const ACT = {
   },
   'refresh-sleeper': async () => { await ensureSleeperDB(true); S.models.clear(); render(); toast('Sleeper player list refreshed'); },
   'lu-mode': (el) => { ui.luMode = el.dataset.v; render(); },
+  'lu-seg': (el) => { ui.luSeg = el.dataset.v; render(); },
+  'lu-open': () => { ui.luOpen = !ui.luOpen; render(); },
+  'wv-pos': (el) => { ui.wvPos = el.dataset.v; render(); },
+  'tr-seg': (el) => { ui.trSeg = el.dataset.v; render(); },
+  'tr-window': (el) => { const lg = active(); lg.tradeWindow = el.dataset.v; save(); render(); },
+  'tr-toggle': (el) => {
+    const lg = active(), T = tradeCtx(lg), id = el.dataset.id, a = T?.assets.get(id);
+    if (!a) return;
+    if (a.owner === T.me.rid) ui.trGive = ui.trGive.includes(id) ? ui.trGive.filter((x) => x !== id) : [...ui.trGive, id];
+    else {
+      if (+ui.trPartner !== a.owner) { ui.trPartner = a.owner; ui.trGet = []; }
+      ui.trGet = ui.trGet.includes(id) ? ui.trGet.filter((x) => x !== id) : [...ui.trGet, id];
+    }
+    ui.trSeg = 'builder'; render();
+  },
+  'tr-open': (el) => {
+    ui.trPartner = +el.dataset.partner;
+    ui.trGive = (el.dataset.give || '').split(',').filter(Boolean);
+    ui.trGet = (el.dataset.get || '').split(',').filter(Boolean);
+    ui.trSeg = 'builder'; S.p.view = 'trades'; S.drawer = null; save(); render(); renderDrawer(); window.scrollTo(0, 0);
+  },
+  'tr-clear': () => { ui.trGive = []; ui.trGet = []; render(); },
+  'tr-top': () => { document.querySelector('.tb-eval')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'tr-shop': (el) => { ui.trShop = ui.trShop === el.dataset.id && S.p.view === 'trades' ? null : el.dataset.id; ui.trSeg = 'ideas'; S.p.view = 'trades'; S.drawer = null; save(); render(); renderDrawer(); },
+  'tr-target': (el) => {
+    const lg = active(), T = tradeCtx(lg), a = T?.assets.get(el.dataset.id);
+    if (!a) return;
+    ui.trPartner = a.owner; ui.trGet = [a.id]; ui.trGive = []; ui.trSeg = 'builder'; S.p.view = 'trades'; S.drawer = null; save(); render(); renderDrawer(); window.scrollTo(0, 0);
+  },
+  'tr-ideas-target': (el) => { ui.trTarget = ui.trTarget === el.dataset.id ? null : el.dataset.id; render(); },
   'lu-refresh': async () => {
     const lg = active(), X = S.lastLU;
     await sync(lg, { full: true, quiet: true });
@@ -870,6 +1022,12 @@ function onChange(e) {
   if (!lg) return;
   if (el.dataset.uiCheck) { ui[el.dataset.uiCheck] = el.checked; render(); return; }
   if (el.dataset.lu) { ui[el.dataset.lu] = el.value; render(); return; }
+  if (el.dataset.tr) {
+    ui[el.dataset.tr] = el.value;
+    if (el.dataset.tr === 'trPartner') ui.trGet = [];
+    if (el.dataset.tr === 'trMe') { ui.trGive = []; ui.trGet = []; }
+    render(); return;
+  }
   if (el.dataset.lg) {
     lg[el.dataset.lg] = el.value;
     if (el.dataset.lg === 'phase') { lg.phaseSet = true; S.models.delete(lg.id); }

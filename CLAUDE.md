@@ -9,12 +9,14 @@ Static web app (vanilla ES modules, no build step) served by GitHub Pages, plus 
 - `npm run data` runs fetch → build_data → build_prospects (needs pandas).
 
 ## Architecture
-- Pure logic, importable in Node: `js/util.js`, `league.js`, `model.js`, `draft.js`, `strategy.js`, `sim.js`, `weekly.js`. Keep DOM out of these.
+- Pure logic, importable in Node: `js/util.js`, `league.js`, `model.js`, `draft.js`, `strategy.js`, `sim.js`, `weekly.js`, `outlook.js`, `trade.js`. Keep DOM out of these.
 - UI: `js/ui/app.js` (state, events via `data-act` delegation, live sync, practice engine), `views.js` (HTML-string views), `player.js` (drawer), `h.js` (helpers).
 - Model flow: `buildModel(data, prospects, cfg, {sleeper})` computes profiles once per league config, then `rank(model, {horizon, marketTrust})` re-ranks cheaply when the sliders move.
 - Player ids: Sleeper id when known, else `g:<gsis>` or `p:<slug>` for pre-draft prospects. Sleeper picks map by Sleeper id.
 - Team keys in drafts: `r<roster_id>` for league drafts, `u<user_id>`/`s<slot>` for mocks and practice.
 - Weekly lineup: `buildWeek()` builds per-week context (games, defense vs position, statuses), `projectWeek(p, W)` returns expected points with `factors` [{label, mult, tone, why}], `optimize()` fills slots (locked players stay put). App side: `lineupInfo()` in app.js; live inputs are Sleeper matchups + projections (`api.sleeper.app/projections/...`, unofficial), nflverse games.csv (lines), Open-Meteo (weather).
+- Outlooks: `outlookContext(M, data, {nextWeek, playoffStart})` (cached on M) holds norms, DvP and the rest-of-season table; `playerOutlook(p, M, X, status)` returns text + adv/risk lists + `future`.
+- Trades: `playerValues(M, X)` puts market and model values on one scale (model re-ranks within position). `tradeContext(M, X, {league, rosters, users, traded}, {myRid, myWindow})` builds teams, picks, windows, needs; then `evaluateTrade`, `offersFor`, `shopAsset`, `sellCandidates`, `buyTargets`, `readyOffers`. UI in `js/ui/tradeviews.js` and `insight.js`.
 - Team codes: Sleeper uses `LAR`, nflverse `LA`; always pass through `normTeam()`.
 - Persisted state: localStorage key `dwr:v1` (leagues, tags/notes, prefs). The Sleeper player DB is cached in IndexedDB, refreshed at most daily.
 

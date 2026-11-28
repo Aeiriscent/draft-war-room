@@ -14,6 +14,10 @@ A dynasty fantasy football assistant built for **superflex, TE-premium** leagues
 | **Live draft board** | Polls Sleeper every 3 seconds during a draft. Handles snake, 3rd-round reversal, linear, and traded picks. Shows who's on the clock, your next two picks, and a "Your pick" list with reasons: lineup gain, positional drop-off before your next turn, and the odds a player lasts to you. |
 | **Teams** | Every roster plus a strategy read (QB-first, Zero RB, Elite-TE anchor, Youth movement, Win-now, Value hunter, Reaches…), lineup strength, value ranks, needs, and what they'll likely take next. |
 | **Weekly lineup** | For any in-season Sleeper league: the best lineup for any team and week, win probability vs your opponent (and vs the league median if your league uses it), and exactly which changes to make in Sleeper. Each player's projection blends Sleeper's projection with recent form adjusted for the opposing defense, Vegas implied totals and spread, home field, kickoff weather, teammate injuries, QB changes, snap trends, and injury/practice status. Lineup styles: Max points, Safe floor, Upside, or Auto (whichever gives the best chance to win). An injury watch names the pivot for every questionable starter. |
+| **Player outlooks** | Every player gets a written breakdown: how he's producing, whether it will last (touchdown luck, efficiency, role direction, offense, health), advantages and risks, his rest-of-season schedule through your fantasy playoffs, and a three-season projection with upside/downside cases. In the player drawer and in Lineup → Roster breakdown. |
+| **Trade value** | Every player and draft pick has a trade value on the dynasty market scale (superflex and TE-premium adjusted), the model's view for this season and long term, a buy/sell/hold verdict for your team, its rookie-pick equivalent, and which teams need him. |
+| **Trades** | Your team's timeline (Contender/Middle/Rebuilding), needs and pick inventory; who to sell; best-value targets; ready-made offers that are fair by market but good for you; a trade builder that grades any offer, estimates acceptance odds, shows lineup impact for both teams and suggests what to add or ask for; and a league-wide value chart. |
+| **Waiver wire** | Best available players this week and rest of season (with who they'd replace in your lineup), plus young dynasty stashes. |
 | **Leagues** | One tab per league: Sleeper leagues (find them by username or paste a league link), any Sleeper draft link (mocks too), leagues not on Sleeper yet (manual tracker), and **practice drafts**. |
 | **Practice drafts** | Rehearse against CPU teams that each run a real strategy (QB-first, Zero RB, Youth movement, TE premium, Robust RB, Market follower, Wildcard…). It can copy a real league's teams, rosters and pick order, so you can mock your actual rookie draft. |
 
@@ -51,6 +55,8 @@ js/draft.js                    pick order, board state, recommendations, surviva
 js/strategy.js                 team strategy detection and league table
 js/sim.js                      practice-draft CPU personas
 js/weekly.js                   weekly start/sit: matchup, Vegas, weather, injuries, lineup optimizer, win odds
+js/outlook.js                  player outlook text: production, sustainability, ROS schedule, 3-year path
+js/trade.js                    trade values, team timelines/needs, pick values, trade grading and suggestions
 js/sleeper.js, js/data.js      Sleeper API client, data loading and refresh
 js/ui/*.js                     app controller, views, player drawer
 pipeline/                      Python data build (fetch.py, build_data.py, build_prospects.py)

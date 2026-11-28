@@ -1,12 +1,13 @@
 // Player profile drawer.
 import { esc, fmt, pos, grade, tag, ageTxt, kickTxt, fxTag } from './h.js';
+import { outlookHTML, valueHTML } from './insight.js';
 import { CLIFF } from '../model.js';
 
 const GRADE_NAMES = [['outlook', 'Next-yr outlook'], ['dynasty', 'Dynasty 3-yr'], ['ceiling', 'Ceiling'], ['floor', 'Floor'],
   ['role', 'Role'], ['cast', 'Support cast'], ['safety', 'Safety']];
 
 export function playerHTML(p, M, opts = {}) {
-  const { tags = {}, draftInfo = null, canDraft = false, canMark = false, week = null } = opts;
+  const { tags = {}, draftInfo = null, canDraft = false, canMark = false, week = null, outlook = null, value = null, canTrade = false } = opts;
   const t = tags[p.id] || {};
   const d = p.draft || {};
   const cap = d.round ? `Round ${d.round}${d.ovr ? ` (#${d.ovr} overall)` : ''}, ${d.year}` : p.prospect ? `${d.year} class, pre-draft` : d.year ? `${d.year} entry` : 'Undrafted/unknown';
@@ -43,6 +44,8 @@ export function playerHTML(p, M, opts = {}) {
     <div><b class="risk-${p.risk.label}">${p.risk.label}</b><span>Risk score ${p.risk.score}/100</span></div>
     <div><b>${p.mktRank ? '#' + p.mktRank : '–'}</b><span>Market rank (model #${p.rank})</span></div>
   </div>
+  ${outlook ? `<section class="block outlook"><h3>Outlook</h3>${outlookHTML(outlook, p)}</section>` : ''}
+  ${value ? `<section class="block"><h3>Trade value</h3>${valueHTML(value, { canTrade })}</section>` : ''}
   <section class="block"><h3>What stands out</h3><div class="flags">${flagsHtml}</div>
     ${p.risk.parts.length ? `<div class="small muted">Risk drivers: ${esc(p.risk.parts.map((x) => x[1]).join('; '))}</div>` : ''}
   </section>
