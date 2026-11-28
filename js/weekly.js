@@ -35,8 +35,8 @@ export function gamesForWeek(rows, week, stadiums = {}) {
     const st = stadiums[stadium] || null;
     const roofType = roof === 'dome' || roof === 'closed' ? 'dome' : st?.[2] === 'dome' ? 'dome' : st?.[2] === 'retractable' ? 'retractable' : 'outdoors';
     const base = { week, day, time, kick, stadium, lat: st?.[0], lon: st?.[1], roof: roofType, total, final: as != null && hs != null };
-    if (home) out.set(home, { ...base, team: home, opp: away, home: true, spread: spread != null ? spread : null });
-    if (away) out.set(away, { ...base, team: away, opp: home, home: false, spread: spread != null ? -spread : null });
+    if (home) out.set(home, { ...base, team: home, opp: away, home: true, spread: spread != null ? spread : null, score: base.final ? [hs, as] : null });
+    if (away) out.set(away, { ...base, team: away, opp: home, home: false, spread: spread != null ? -spread : null, score: base.final ? [as, hs] : null });
   }
   return out;
 }
@@ -131,8 +131,9 @@ export function projectWeek(p, W) {
   const factors = [];
   const add = (label, mult, tone, why) => factors.push({ label, mult, tone, why });
   const base = { p, pos, team, game: g, status: st, factors };
-  if (!g) return { ...base, bye: true, proj: 0, exp: 0, sd: 0, floor: 0, ceil: 0, pPlay: 0, locked: false, note: 'Bye week' };
-  const locked = g.kick && W.now >= g.kick;
+  if (!g) return { ...base, bye: true, state: 'bye', proj: 0, exp: 0, sd: 0, floor: 0, ceil: 0, pPlay: 0, locked: false, note: 'Bye week' };
+  const state = gameState(g, W.now);
+  const locked = state !== 'upcoming';
 
   // 1. recent form in league scoring (exponential decay, regressed toward season rate)
   const cur = p.weeks.filter((w) => w.s === W.season && w.wk < W.week);
@@ -278,7 +279,7 @@ export function projectWeek(p, W) {
   const cv = pts.length >= 4 && mean(pts) > 0 ? clamp(sd(pts) / mean(pts), 0.3, 1.0) : 0.6;
   const sdv = Math.sqrt(pPlay * (ifPlays * cv) ** 2 + pPlay * (1 - pPlay) * ifPlays ** 2);
   return {
-    ...base, locked, bye: false, form, sleeperPts, matchupMult: m, proj: ifPlays, exp, pPlay, sd: sdv,
+    ...base, state, locked, bye: false, form, sleeperPts, matchupMult: m, proj: ifPlays, exp, pPlay, sd: sdv, projExp: exp,
     floor: Math.max(0, exp - 0.84 * sdv), ceil: exp + 0.84 * sdv,
     gameTimeDecision: inj === 'Questionable' && g.kick && g.kick.getUTCHours() >= 20,
   };
@@ -305,6 +306,14 @@ export function optimize(entries, slots, risk = 'balanced', locked = new Map()) 
   const total = filled.reduce((s, e) => s + (e ? e.exp : 0), 0);
   const variance = filled.reduce((s, e) => s + (e ? e.sd ** 2 : 0), 0);
   return { slots, filled, total, sd: Math.sqrt(variance) };
+}
+
+/** Where a game stands: 'upcoming' before kickoff, 'live' while it's on, 'final' once over. */
+export const GAME_LEN = 3.4 * 3600e3;
+export function gameState(g, now) {
+  if (!g?.kick) return g?.final ? 'final' : 'upcoming';
+  if (g.final || now - g.kick > GAME_LEN + 1.1 * 3600e3) return 'final';
+  return now >= g.kick ? 'live' : 'upcoming';
 }
 
 export function winProb(a, b) {

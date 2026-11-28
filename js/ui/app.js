@@ -1,9 +1,9 @@
 // App controller: state, league tabs, live Sleeper sync, practice-draft engine, events.
 import { loadData, refreshMarket, loadSleeperPlayers, loadSchedule, loadWeather, sleeperPlayersAt } from '../data.js';
-import { buildWeek, projectWeek, optimize, winProb, gamesForWeek, SLOT_OK } from '../weekly.js';
+import { buildWeek, projectWeek, optimize, winProb, gamesForWeek, SLOT_OK, GAME_LEN } from '../weekly.js';
 import { outlookContext, playerOutlook } from '../outlook.js';
 import { tradeContext, liteTrade, valueReport, evaluateTrade, offersFor, shopAsset, sellCandidates, buyTargets, readyOffers, myVal } from '../trade.js';
-import { normTeam, median, normCdf } from '../util.js';
+import { normTeam, median, normCdf, clamp } from '../util.js';
 import { buildModel, rank } from '../model.js';
 import { normalizeConfig, scoringFromSleeper, lineupFromSleeper, SLOT_ELIG } from '../league.js';
 import { sleeper, parseSleeperRef } from '../sleeper.js';
@@ -371,11 +371,18 @@ function lineupInfo(lg) {
     const ids = [...new Set((m?.players || ro?.players || []).map(String))].filter((id) => !hold.has(id));
     const pts = m?.players_points || {};
     const entries = ids.map((id) => {
-      let e = entryFor(id);
-      const done = e.locked && e.game && pts[id] != null && (e.game.final || now - e.game.kick > 4.5 * 3600e3);
-      if (e.locked) e = { ...e, actual: pts[id] ?? null };
-      if (done) e = { ...e, done: true, exp: pts[id], sd: 0, floor: pts[id], ceil: pts[id] };
-      return e;
+      const e = entryFor(id);
+      if (!e.locked) return e;
+      const actual = pts[id] ?? null;
+      if (e.state === 'final') {
+        // finished: what he scored is what counts (falls back to the projection only if Sleeper has no score yet)
+        return actual != null ? { ...e, actual, done: true, exp: actual, sd: 0, floor: actual, ceil: actual } : { ...e, actual: null, done: true, noScore: true };
+      }
+      // live: points so far plus his projection for the part of the game still to play
+      const left = clamp(1 - (now - e.game.kick) / GAME_LEN, 0, 1);
+      const so = actual ?? 0;
+      const exp = so + e.projExp * left;
+      return { ...e, actual: so, left, exp, sd: e.sd * Math.sqrt(left), floor: so + (e.floor * left), ceil: so + e.ceil * left };
     });
     const byId = new Map(entries.map((e) => [e.p.id, e]));
     const starters = (m?.starters || ro?.starters || []).map(String);
@@ -385,6 +392,14 @@ function lineupInfo(lg) {
     const current = { slots, filled: curFilled, total: curFilled.reduce((t, e) => t + (e ? e.exp : 0), 0), sd: Math.sqrt(curFilled.reduce((t, e) => t + (e ? e.sd ** 2 : 0), 0)) };
     const plans = Object.fromEntries(['safe', 'balanced', 'upside'].map((k) => [k, optimize(entries, slots, k, locked)]));
     return { rid: r, m, entries, starters, current, plans, team: teams.find((t) => t.rid === r) };
+  };
+  const split = (lineup) => {
+    const f = lineup.filled.filter(Boolean);
+    const played = f.filter((e) => e.state === 'final'), live = f.filter((e) => e.state === 'live'), left = f.filter((e) => e.state === 'upcoming');
+    const sum = (l, f) => l.reduce((s, e) => s + f(e), 0);
+    const playedPts = sum(played, (e) => e.actual ?? 0), livePts = sum(live, (e) => e.actual ?? 0);
+    const scored = playedPts + livePts;
+    return { scored, playedPts, livePts, upcomingProj: sum(left, (e) => e.exp), toCome: lineup.total - scored, total: lineup.total, played: played.length, live: live.length, left: left.length, starters: lineup.slots.length };
   };
   const me = plan(rid);
   const oppRid = me.m?.matchup_id ? D.matchups.find((x) => x.matchup_id === me.m.matchup_id && x.roster_id !== rid)?.roster_id : null;
@@ -431,6 +446,7 @@ function lineupInfo(lg) {
   const D2 = D;
   return {
     week, curWeek, season: D.season, teams, rid, mine: mine?.rid, me, opp, oppBest, mode, why, rec, swaps, empties, entryFor,
+    split: { rec: split(rec), cur: split(me.current), opp: oppBest ? split(oppBest) : null },
     winNow: oppBest ? wp(me.current) : null, winRec: oppBest ? wp(rec) : null, medianInfo, slots,
     sources: {
       at: D2.at, proj: Object.keys(D2.projections || {}).length,
@@ -541,9 +557,10 @@ function waiverInfo(lg, X) {
   };
   const rows = avail.filter((p) => OX.ros.get(p.id)).map((p) => {
     const e = X.entryFor(p.id), R = OX.ros.get(p.id), w = worst(p.pos);
-    return { p, e, R, o: null, v: vals.get(p.id), over: w && e.exp > w.exp + 0.5 ? { who: w, gain: e.exp - w.exp } : null };
+    const now = e.state === 'upcoming' ? e.exp : 0; // a player whose game has started can't help this week
+    return { p, e, R, now, o: null, v: vals.get(p.id), over: w && e.state === 'upcoming' && e.exp > w.exp + 0.5 ? { who: w, gain: e.exp - w.exp } : null };
   }).filter((x) => ui.wvPos === 'ALL' || x.p.pos === ui.wvPos)
-    .sort((a, b) => (b.R.ppg + 0.5 * b.e.exp) - (a.R.ppg + 0.5 * a.e.exp)).slice(0, 20);
+    .sort((a, b) => (b.R.ppg + 0.5 * b.now) - (a.R.ppg + 0.5 * a.now)).slice(0, 20);
   for (const r of rows) r.o = playerOutlook(r.p, M, OX, statusFor(r.p));
   const stash = avail.filter((p) => (p.age ?? 30) <= 24.5 && vals.get(p.id)).sort((a, b) => vals.get(b.id).dyn - vals.get(a.id).dyn).slice(0, 8)
     .map((p) => ({ p, v: vals.get(p.id), o: playerOutlook(p, M, OX, statusFor(p)) }));

@@ -131,13 +131,17 @@ function weekHTML({ e, week }) {
   const g = e.game;
   if (e.bye) return `<div class="panel wkbox"><h3>Week ${week}</h3><p class="muted" style="margin:0">Bye week.</p></div>`;
   const fx = e.factors.map((f) => `<div class="flag">${fxTag(f)}<span class="muted">${esc(f.why)}</span></div>`).join('') || '<div class="muted small">Nothing unusual this week.</div>';
-  return `<div class="panel wkbox"><h3>Week ${week}: ${g.home ? 'vs' : '@'} ${esc(g.opp)} <span class="muted small">${esc(kickTxt(g))}</span></h3>
-    <div class="stats">
-      <div><b>${fmt(e.done ? e.exp : e.exp)}</b><span>${e.done ? 'Final points' : 'Projected points'}</span></div>
-      <div><b>${fmt(e.floor)}–${fmt(e.ceil)}</b><span>Likely range</span></div>
-      <div><b>${Math.round(e.pPlay * 100)}%</b><span>Chance he plays</span></div>
+  const vs = `${g.home ? 'vs' : '@'} ${esc(g.opp)}`;
+  const status = e.state === 'final' ? `<span class="gst final">Final</span>${g.score ? ` ${g.score[0]}–${g.score[1]}` : ''}` : e.state === 'live' ? '<span class="gst live"><i class="ldot"></i>Live</span>' : `<span class="gst up">${esc(kickTxt(g))}</span>`;
+  const top = e.state === 'final'
+    ? `<div><b>${e.actual != null ? fmt(e.actual) : '–'}</b><span>Points scored (final)</span></div><div><b>${fmt(e.projExp)}</b><span>What we projected</span></div>`
+    : e.state === 'live'
+      ? `<div><b>${fmt(e.actual ?? 0)}</b><span>Points so far (live)</span></div><div><b>${fmt(e.exp)}</b><span>Projected finish</span></div>`
+      : `<div><b>${fmt(e.exp)}</b><span>Projected points</span></div><div><b>${fmt(e.floor)}–${fmt(e.ceil)}</b><span>Likely range</span></div><div><b>${Math.round(e.pPlay * 100)}%</b><span>Chance he plays</span></div>`;
+  return `<div class="panel wkbox"><h3>Week ${week}: ${vs} ${status}</h3>
+    <div class="stats">${top}
       <div><b>${e.sleeperPts != null ? fmt(e.sleeperPts) : '–'}</b><span>Sleeper projection (your scoring)</span></div>
       <div><b>${e.form != null ? fmt(e.form) : '–'}</b><span>Recent form (PPG)</span></div>
       <div><b>×${fmt(e.matchupMult ?? 1, 2)}</b><span>Matchup adjustment</span></div>
-    </div>${fx}</div>`;
+    </div>${e.state === 'upcoming' ? fx : `<details><summary class="small muted">What went into the pre-game projection</summary>${fx}</details>`}</div>`;
 }

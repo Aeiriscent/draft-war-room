@@ -336,21 +336,51 @@ function topFactors(e, n = 3) {
   return inj ? [inj, ...out] : out;
 }
 
+// Game status, said the same way everywhere: FINAL (scored), LIVE (so far), or the kickoff time (projected).
+export function gameLine(e) {
+  const g = e.game;
+  if (e.bye || !g) return '<span class="gst bye">Bye</span>';
+  const vs = `${g.home ? 'vs' : '@'} ${esc(g.opp)}`;
+  if (e.state === 'final') {
+    const sc = g.score ? ` · <span class="nw">${g.score[0] > g.score[1] ? 'W' : g.score[0] < g.score[1] ? 'L' : 'T'} ${g.score[0]}–${g.score[1]}</span>` : '';
+    return `<span class="gst final">Final</span>${vs}${sc}`;
+  }
+  if (e.state === 'live') return `<span class="gst live"><i class="ldot"></i>Live</span>${vs}`;
+  return `<span class="gst up">${esc(kickTxt(g))}</span>${vs}`;
+}
+export function ptsBlock(e) {
+  if (e.bye) return '<div class="pts bye"><span class="lbl">Bye</span><b>0</b><small>no game</small></div>';
+  if (e.state === 'final') {
+    if (e.noScore || e.actual == null) return `<div class="pts final"><span class="lbl">Played</span><b>–</b><small>score not in yet · proj ${fmt(e.projExp)}</small></div>`;
+    const d = e.actual - e.projExp;
+    return `<div class="pts final"><span class="lbl">Scored</span><b>${fmt(e.actual)}</b><small>proj was ${fmt(e.projExp)} <span class="${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '+' : '−'}${fmt(Math.abs(d))}</span></small></div>`;
+  }
+  if (e.state === 'live') return `<div class="pts live"><span class="lbl">So far</span><b>${fmt(e.actual ?? 0)}</b><small>proj. finish ${fmt(e.exp)}</small></div>`;
+  return `<div class="pts proj"><span class="lbl">Proj</span><b>${fmt(e.exp)}</b><small>range ${fmt(e.floor)}–${fmt(e.ceil)}</small></div>`;
+}
+
 function luRow(e, slot, { isNew = false } = {}) {
   if (!e) return `<div class="lu-row"><span class="slot">${esc(SLOT_TXT[slot] || slot)}</span><span class="empty muted">${SLOT_OK[slot] ? 'Empty' : 'Not modeled (IDP)'}</span><span></span></div>`;
-  const p = e.p, g = e.game;
+  const p = e.p;
   const inj = e.status?.injury;
-  const state = e.done ? 'Final' : e.locked ? 'In progress' : '';
-  const gameTxt = e.bye ? '<b class="risk-High">BYE</b>' : `${g.home ? 'vs' : '@'} ${esc(g.opp)} · ${esc(state || kickTxt(g))}`;
-  const chips = e.bye ? '' : topFactors(e).map(fxTag).join('') + (e.gameTimeDecision && !e.locked ? tag('Late kickoff: have a pivot', 'warn') : '');
-  const dead = e.bye || e.pPlay === 0;
-  const val = e.done ? `<b>${fmt(e.exp)}</b><small>final</small>` : e.locked && e.actual != null ? `<b>${fmt(e.actual)}</b><small>so far · proj ${fmt(e.exp)}</small>` : `<b>${fmt(e.exp)}</b><small>${fmt(e.floor)}–${fmt(e.ceil)}</small>`;
+  const upcoming = !e.bye && e.state === 'upcoming';
+  const chips = upcoming ? topFactors(e).map(fxTag).join('') + (e.gameTimeDecision ? tag('Late kickoff: have a pivot', 'warn') : '') : '';
+  const dead = e.bye || (upcoming && e.pPlay === 0);
   const click = p.stub ? '' : `data-act="player" data-id="${esc(p.id)}"`;
-  return `<div class="lu-row ${p.stub ? '' : 'click'} ${isNew ? 'new' : ''} ${dead ? 'dead' : ''}" ${click}>
-    <span class="slot">${slot ? esc(SLOT_TXT[slot] || slot) : ''}${e.locked ? ' 🔒' : ''}</span>
-    <div><div class="pname">${posBadge(p.pos)} ${esc(p.name)}${inj ? ` <span class="tag ${inj === 'Questionable' ? 'warn' : 'bad'}">${esc(inj === 'Questionable' ? 'Q' : inj === 'Doubtful' ? 'D' : inj)}</span>` : ''}<small>${esc(e.team || p.team || 'FA')} ${gameTxt}</small></div>
+  return `<div class="lu-row st-${e.bye ? 'bye' : e.state} ${p.stub ? '' : 'click'} ${isNew ? 'new' : ''} ${dead ? 'dead' : ''}" ${click}>
+    <span class="slot">${slot ? esc(SLOT_TXT[slot] || slot) : ''}</span>
+    <div><div class="pname">${posBadge(p.pos)} ${esc(p.name)}${inj && upcoming ? ` <span class="tag ${inj === 'Questionable' ? 'warn' : 'bad'}">${esc(inj === 'Questionable' ? 'Q' : inj === 'Doubtful' ? 'D' : inj)}</span>` : ''}<small class="gline">${esc(e.team || p.team || 'FA')} ${gameLine(e)}</small></div>
       ${chips ? `<div class="fx">${chips}</div>` : ''}</div>
-    <div class="pr">${val}</div></div>`;
+    ${ptsBlock(e)}</div>`;
+}
+
+function statusBar(sp) {
+  if (!sp) return '';
+  if (!sp.played && !sp.live) return `<div class="lu-status"><span><i class="sw up"></i>Nobody has played yet · <b>${fmt(sp.total)}</b> projected</span></div>`;
+  return `<div class="lu-status">
+    <span><i class="sw final"></i>Played <b>${sp.played}</b> · <b>${fmt(sp.playedPts)}</b> pts scored</span>
+    ${sp.live ? `<span><i class="sw live"></i>Live <b>${sp.live}</b> · <b>${fmt(sp.livePts)}</b> so far</span>` : ''}
+    <span><i class="sw up"></i>Still to play <b>${sp.left}</b> · <b>${fmt(sp.upcomingProj)}</b> projected</span></div>`;
 }
 
 function pivots(X) {
@@ -396,16 +426,26 @@ export function lineupView(C, lg, X) {
   if (C.ui.luSeg === 'waiver' && X.waiver) return controls + seg + waiverSection(C, lg, X);
   const me = X.me, opp = X.opp, rec = X.rec;
   const meName = me.team?.name || 'Team';
+  const side = (name, L, sp, setNow) => {
+    const max = Math.max(X.rec.total, X.oppBest?.total || 0, 1);
+    const allDone = sp && sp.left === 0 && sp.live === 0;
+    return `<div class="mside"><div class="small muted">${esc(name)}</div>
+      <div class="tot">${fmt(L.total)}</div><div class="small muted" title="Likely within ± ${fmt(L.sd)}">${allDone ? 'final score' : 'projected final'}</div>
+      ${sp ? `<div class="mbar" title="Solid: points already scored. Striped: projected points still to come."><i class="sc" style="width:${(100 * sp.scored) / max}%"></i><i class="tc" style="width:${(100 * Math.max(0, sp.toCome)) / max}%"></i></div>
+      <div class="small"><b>${fmt(sp.scored)}</b> scored · <b>${fmt(Math.max(0, sp.toCome))}</b> to come</div>
+      <div class="small muted">${sp.played} of ${sp.starters} played${sp.live ? ` · ${sp.live} live` : ''}</div>` : ''}</div>`;
+  };
   const match = `<div class="panel">
     <h3>Week ${X.week} matchup${mineView ? '' : ` · ${esc(meName)}`}</h3>
     ${opp ? `<div class="match">
-      <div><div class="small muted">${esc(meName)}</div><div class="tot">${fmt(rec.total)}</div><div class="small muted">± ${fmt(rec.sd)} · set now ${fmt(me.current.total)}</div></div>
+      ${side(meName, rec, X.split.rec, me.current.total)}
       <div><div class="big">${pctTxt(X.winRec)}</div><div class="small muted">to win</div></div>
-      <div><div class="small muted">${esc(opp.team?.name || 'Opponent')}</div><div class="tot">${fmt(X.oppBest.total)}</div><div class="small muted">± ${fmt(X.oppBest.sd)} · set now ${fmt(opp.current.total)}</div></div></div>
-      <p class="small" style="margin:10px 0 0">With the lineup set in Sleeper right now: <b>${pctTxt(X.winNow)}</b> to win. Recommended: <b>${pctTxt(X.winRec)}</b>.
+      ${side(opp.team?.name || 'Opponent', X.oppBest, X.split.opp, opp.current.total)}</div>
+      <div class="mkey small muted"><span><i class="sc"></i>already scored</span><span><i class="tc"></i>projected, still to play</span></div>
+      <p class="small" style="margin:10px 0 0">With the lineup set in Sleeper right now (${fmt(me.current.total)} projected): <b>${pctTxt(X.winNow)}</b> to win. With the recommended lineup: <b>${pctTxt(X.winRec)}</b>.
       ${X.medianInfo ? ` Chance to beat the league median (${fmt(X.medianInfo.median)}): <b>${pctTxt(X.medianInfo.p)}</b>.` : ''}</p>`
     : `<p class="muted">No head-to-head matchup found for this week. Projected total: <b>${fmt(rec.total)}</b>.</p>`}
-    <p class="small muted" style="margin:8px 0 0"><b>${esc(MODES.find((m) => m[0] === X.mode)?.[1] || '')}</b>${C.ui.luMode === 'auto' ? ` (auto): ${esc(X.why)}` : ''} The opponent is projected with their best lineup.</p></div>`;
+    <p class="small muted" style="margin:8px 0 0"><b>${esc(MODES.find((m) => m[0] === X.mode)?.[1] || '')}</b>${C.ui.luMode === 'auto' ? ` (auto): ${esc(X.why)}` : ''} The opponent is projected with their best lineup. Players whose games have started are locked where Sleeper has them.</p></div>`;
 
   const piv = pivots(X);
   const changes = `<div class="panel">
@@ -429,7 +469,7 @@ export function lineupView(C, lg, X) {
   const oppList = opp ? `<details class="panel" style="margin-top:14px"><summary><b>${esc(opp.team?.name || 'Opponent')}’s projected lineup</b> <span class="muted small">${fmt(X.oppBest.total)} pts</span></summary>
     ${X.oppBest.filled.map((e, i) => luRow(e, X.oppBest.slots[i])).join('')}</details>` : '';
   return `${controls}${seg}<div class="lu-grid">${match}${changes}</div>
-    <div class="lu-grid"><div class="panel"><h3>Recommended starters <span class="muted small">gold bar = change from Sleeper</span></h3>${starters}</div>
+    <div class="lu-grid"><div class="panel"><h3>Recommended starters <span class="muted small">gold bar = change from Sleeper</span></h3>${statusBar(X.split.rec)}${starters}</div>
     <div class="panel"><h3>Bench</h3>${bench || '<p class="muted">No bench players.</p>'}</div></div>${oppList}
     <p class="small muted">Each projection blends Sleeper’s projection (rescored in this league’s scoring) with recent form adjusted for the opposing defense, the Vegas team total and spread, home field, weather at kickoff, teammate injuries, QB changes and role trends, then multiplies by the chance he plays given his injury and practice status. Tap a player for the full breakdown.</p>`;
 }

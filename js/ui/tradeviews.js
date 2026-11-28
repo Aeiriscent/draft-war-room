@@ -1,9 +1,17 @@
 // Lineup → Roster breakdown / Waiver wire, and the Trades tab.
 import { esc, fmt, tag } from './h.js';
 import { posBadge, outlookHTML, valueHTML, scheduleStrip, tradeCard, assetLabel } from './insight.js';
+import { gameLine } from './views.js';
 
 const num = (x) => (x == null ? '–' : Math.round(x).toLocaleString());
 const SLOT_TXT = { SUPER_FLEX: 'SF', FLEX: 'FLEX', REC_FLEX: 'W/T', WRRB_FLEX: 'W/R' };
+// this week's number with a label that says whether it's a projection or real points
+function weekNum(e, wk) {
+  if (e.bye) return `<div><b>–</b><span>Bye wk ${wk}</span></div>`;
+  if (e.state === 'final') return `<div class="done"><b>${e.actual != null ? fmt(e.actual) : '–'}</b><span>Scored wk ${wk}</span></div>`;
+  if (e.state === 'live') return `<div class="live"><b>${fmt(e.actual ?? 0)}</b><span>So far wk ${wk} (live)</span></div>`;
+  return `<div><b>${fmt(e.exp)}</b><span>Proj wk ${wk}</span></div>`;
+}
 const injTag = (inj) => (inj ? ` <span class="tag ${inj === 'Questionable' ? 'warn' : 'bad'}">${esc(inj === 'Questionable' ? 'Q' : inj === 'Doubtful' ? 'D' : inj)}</span>` : '');
 
 // ---------------- Lineup: roster breakdown ----------------
@@ -15,9 +23,9 @@ export function rosterSection(C, lg, X) {
     return `<details class="pcard" ${C.ui.luOpen ? 'open' : ''}>
       <summary>
         <div class="pc-top">
-          <div class="pc-who"><span class="slot">${slot ? esc(SLOT_TXT[slot] || slot) : 'BN'}</span>${posBadge(p.pos)} <b>${esc(p.name)}</b> <small class="muted">${esc(p.team || 'FA')}${p.age ? ` · ${Math.floor(p.age)}` : ''}</small>${injTag(e.status?.injury)}</div>
+          <div class="pc-who"><span class="slot">${slot ? esc(SLOT_TXT[slot] || slot) : 'BN'}</span>${posBadge(p.pos)} <b>${esc(p.name)}</b> <small class="muted">${esc(p.team || 'FA')}${p.age ? ` · ${Math.floor(p.age)}` : ''}</small>${e.state === 'upcoming' ? injTag(e.status?.injury) : ''}<small class="gline">${gameLine(e)}</small></div>
           <div class="pc-nums">
-            <div><b>${e.bye ? 'BYE' : fmt(e.exp)}</b><span>Week ${X.week}</span></div>
+            ${weekNum(e, X.week)}
             <div><b>${o.ros ? fmt(o.ros.ppg) : '–'}</b><span>${o.ros ? `Rest of season · ${esc(p.pos)}${o.ros.rank}` : 'Rest of season'}</span></div>
             <div><b>${r ? num(r.a.value) : '–'}</b><span>Trade value</span></div>
           </div>
@@ -42,9 +50,9 @@ export function waiverSection(C, lg, X) {
   const posF = `<div class="chips" style="margin-bottom:10px">${['ALL', 'QB', 'RB', 'WR', 'TE'].map((k) => `<button class="chip ${C.ui.wvPos === k ? 'on' : ''}" data-act="wv-pos" data-v="${k}">${k === 'ALL' ? 'All' : k}</button>`).join('')}</div>`;
   const rows = W.rows.map(({ p, e, R, o, v, over }) => `<div class="wv-row click" data-act="player" data-id="${esc(p.id)}">
       <div class="pc-top">
-        <div class="pc-who">${posBadge(p.pos)} <b>${esc(p.name)}</b> <small class="muted">${esc(p.team || 'FA')}${p.age ? ` · ${Math.floor(p.age)}` : ''}</small>${injTag(e.status?.injury)}</div>
+        <div class="pc-who">${posBadge(p.pos)} <b>${esc(p.name)}</b> <small class="muted">${esc(p.team || 'FA')}${p.age ? ` · ${Math.floor(p.age)}` : ''}</small>${injTag(e.status?.injury)}<small class="gline">${gameLine(e)}</small></div>
         <div class="pc-nums">
-          <div><b>${e.bye ? 'BYE' : fmt(e.exp)}</b><span>Week ${X.week}</span></div>
+          ${e.bye || e.state === 'upcoming' ? weekNum(e, X.week) : `<div><b>–</b><span>Already ${e.state === 'live' ? 'playing' : 'played'} wk ${X.week}</span></div>`}
           <div><b>${fmt(R.ppg)}</b><span>Rest of season · ${esc(p.pos)}${R.rank}</span></div>
           <div><b>${v ? num(v.value) : '–'}</b><span>Trade value</span></div>
         </div>

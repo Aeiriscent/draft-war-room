@@ -73,7 +73,16 @@ function setStarters(r, i) {
     return take(ok, i === 0 && s === 'RB');
   });
 }
-const matchups3 = rosters3.map((r, i) => ({ roster_id: r.roster_id, matchup_id: Math.floor(i / 2) + 1, players: r.players, starters: setStarters(r, i), points: 0, players_points: {} }));
+// games already played this week (before today) have real points in Sleeper's matchup feed
+const today = new Date().toISOString().slice(0, 10);
+const playedTeams = new Set(data.schedule.filter((g) => g[0] === 12 && g[1] < today).flatMap((g) => [g[3], g[4]]));
+const fixTeam = (t) => (t === 'LAR' ? 'LA' : t);
+const ptsFor = (id) => (playedTeams.has(fixTeam(players[id]?.team)) ? Math.round((3 + (parseInt(String(id).replace(/\D/g, '') || '7', 10) % 23)) * 10) / 10 : 0);
+const matchups3 = rosters3.map((r, i) => {
+  const players_points = Object.fromEntries(r.players.map((id) => [id, ptsFor(id)]));
+  const starters = setStarters(r, i);
+  return { roster_id: r.roster_id, matchup_id: Math.floor(i / 2) + 1, players: r.players, starters, points: starters.reduce((s, id) => s + (players_points[id] || 0), 0), players_points };
+});
 const statLine = { QB: { pass_yd: 245, pass_td: 1.7, pass_int: 0.7, rush_yd: 18 }, RB: { rush_yd: 62, rush_td: 0.45, rec: 3, rec_yd: 22 }, WR: { rec: 5.2, rec_yd: 64, rec_td: 0.38 }, TE: { rec: 4.1, rec_yd: 41, rec_td: 0.3 } };
 function projections(url) {
   const pos = new URL(url).searchParams.get('position[]');
@@ -236,6 +245,8 @@ await page.waitForSelector('.match', { timeout: 20000 }).catch(async (e) => {
 await page.waitForTimeout(800);
 console.log('lineup matchup:', (await page.textContent('.match')).replace(/\s+/g, ' ').trim());
 console.log('lineup changes:', (await page.locator('.lu-grid .panel').nth(1).textContent()).replace(/\s+/g, ' ').trim().slice(0, 400));
+console.log('played teams this week:', [...playedTeams].join(','), '| final rows:', await page.locator('.lu-row.st-final').count(), '| upcoming rows:', await page.locator('.lu-row.st-upcoming').count());
+console.log('status bar:', (await page.textContent('.lu-status')).replace(/\s+/g, ' ').trim());
 console.log('lineup sources:', (await page.textContent('.lu-src')).replace(/\s+/g, ' ').trim());
 console.log('starter rows:', await page.locator('.lu-grid >> nth=1 >> .panel >> nth=0 >> .lu-row').count());
 await page.screenshot({ path: `${OUT}/14-lineup.png`, fullPage: true });

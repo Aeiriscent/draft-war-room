@@ -235,7 +235,6 @@ section.block h3 { border-bottom: 1px solid var(--line); padding-bottom: 6px }
 .lu-row.click:hover { background: var(--panel2) }
 .lu-row .slot { font-size: 11px; font-weight: 700; color: var(--muted) }
 .lu-row .fx { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px }
-.lu-row .pr { text-align: right }
 .lu-row .pr b { font-family: var(--display); font-size: 19px; display: block; line-height: 1.1 }
 .lu-row .pr small { display: block; color: var(--muted); font-size: 11px }
 .lu-row.new { box-shadow: inset 3px 0 0 var(--gold) }
@@ -251,6 +250,41 @@ details.panel summary { cursor: pointer; padding: 2px 0 8px }
   .lu-top .field { flex: 1 1 140px }
   .lu-top select { min-width: 0; width: 100% }
 }
+
+/* game status: final / live / upcoming */
+.gst { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; line-height: 1.5 }
+.gst.final { background: var(--ink); color: var(--bg) }
+.gst.live { background: var(--bad); color: #fff }
+.gst.up { border: 1px solid var(--line); color: var(--ink); text-transform: none; letter-spacing: 0; font-weight: 700; font-size: 11px }
+.gst.bye { background: var(--panel2); color: var(--bad) }
+.ldot { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: pulse 1.4s ease-in-out infinite }
+@keyframes pulse { 50% { opacity: .25 } }
+.lu-row .gline, .pc-who .gline { display: block; margin-top: 3px; color: var(--muted) }
+.pc-who .gline { flex-basis: 100%; margin: 0 0 0 36px }
+.pts { text-align: right; min-width: 92px }
+.pts .lbl { display: block; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
+.pts b { display: block; font-family: var(--display); font-size: 20px; line-height: 1.1 }
+.pts small { display: block; color: var(--muted); font-size: 11px }
+.pts.proj b { color: var(--info); font-style: italic }
+.pts.final .lbl { color: var(--ink) }
+.pts.live .lbl { color: var(--bad) }
+.pts .up { color: var(--good) } .pts .down { color: var(--bad) }
+.lu-row.st-final { background: color-mix(in srgb, var(--ink) 5%, transparent) }
+.lu-row.st-final .pname { opacity: .9 }
+.lu-row.st-live { background: color-mix(in srgb, var(--bad) 7%, transparent) }
+.pc-nums .done b { font-style: normal } .pc-nums .live b { color: var(--bad) }
+.lu-status { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; padding: 8px 10px; margin: 0 0 6px; border-radius: 8px; background: var(--panel2) }
+.lu-status .sw, .mkey i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px }
+.sw.final, .mkey .sc { background: var(--ink) }
+.sw.live { background: var(--bad) }
+.sw.up { border: 1px dashed var(--muted) }
+.mbar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--panel2); margin: 8px 0 4px }
+.mbar i { display: block; height: 100% }
+.mbar .sc { background: var(--ink) }
+.mbar .tc, .mkey .tc { background: repeating-linear-gradient(135deg, var(--muted) 0 3px, transparent 3px 6px) }
+.mkey { display: flex; gap: 14px; justify-content: center; margin-top: 8px }
+.mside { min-width: 0 }
+.nw { white-space: nowrap }
 
 /* sub-tabs inside a view */
 .subseg { margin: 0 0 12px }
