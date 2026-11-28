@@ -156,6 +156,9 @@ async function newPage(viewport) {
 
 const page = await newPage({ width: 1440, height: 900 });
 await page.goto(BASE);
+const nav = (p, name) => p.click(`.navlist >> text="${name}"`);
+const addLeague = async (p) => { await p.click('#rail [data-act=menu][data-v=leagues]'); await p.click('#rail .menu .add'); };
+const switchLeague = async (p, name, mobile = false) => { const root = mobile ? '#topbar' : '#rail'; await p.click(`${root} [data-act=menu][data-v=leagues]`); await p.click(`${root} .menu >> text=${name}`); };
 await page.waitForSelector('text=Add your first league');
 await page.screenshot({ path: `${OUT}/01-welcome.png` });
 // add Sleeper league
@@ -183,23 +186,23 @@ await page.screenshot({ path: `${OUT}/04-drawer.png` });
 await page.click('[data-act=tag][data-v=target]');
 await page.keyboard.press('Escape');
 // rankings
-await page.click('.subnav >> text=Rankings');
+await nav(page, 'Rankings');
 await page.waitForSelector('table');
 await page.screenshot({ path: `${OUT}/05-rankings.png` });
-await page.click('.chips >> text=TE');
+await page.click('.segc >> text=TE');
 await page.fill('[data-ui=q]', 'a');
 console.log('rankings rows (TE, q=a):', await page.locator('tbody tr').count());
 // teams
-await page.click('.subnav >> text=Teams');
+await nav(page, 'Teams');
 await page.waitForSelector('.team');
 console.log('teams:', await page.locator('.team').count());
 await page.screenshot({ path: `${OUT}/06-teams.png`, fullPage: false });
 // settings
-await page.click('.subnav >> text=League settings');
+await nav(page, 'Settings');
 await page.waitForSelector('text=Scoring');
 await page.screenshot({ path: `${OUT}/07-settings.png` });
 // practice draft
-await page.click('text=+ League');
+await addLeague(page);
 await page.click('text=Practice draft');
 await page.fill('#m-teams', '10');
 await page.fill('#m-rounds', '12');
@@ -214,10 +217,10 @@ console.log('after my pick:', (await page.textContent('.clock')).replace(/\s+/g,
 await page.screenshot({ path: `${OUT}/08-practice.png` });
 await page.click('text=Auto-draft my pick');
 await page.waitForTimeout(3000);
-await page.click('.subnav >> text=Teams');
+await nav(page, 'Teams');
 await page.screenshot({ path: `${OUT}/09-practice-teams.png` });
 // existing league, rookie draft
-await page.click('text=+ League');
+await addLeague(page);
 await page.click('text=My Sleeper league');
 await page.fill('#m-user', 'testuser');
 await page.click('text=Find my leagues');
@@ -229,36 +232,39 @@ console.log('rookie next:', (await page.locator('.status .panel').nth(1).textCon
 console.log('rookie top rec:', (await page.textContent('.rec.first .row1')).replace(/\s+/g, ' ').trim());
 console.log('rookie available count:', await page.locator('.p-players tbody tr').count());
 await page.screenshot({ path: `${OUT}/09b-rookie-board.png` });
-await page.click('.subnav >> text=Teams');
+await nav(page, 'Teams');
 await page.screenshot({ path: `${OUT}/09c-rookie-teams.png` });
 // in-season league from a pasted link -> Lineup view
-await page.click('text=+ League');
+await addLeague(page);
 await page.click('text=Paste a Sleeper link');
 await page.fill('#m-draft', `https://sleeper.com/leagues/${L3}/team`);
 await page.fill('#m-user2', 'testuser');
 await page.click('[data-act=m-load-draft]');
-await page.waitForSelector('.match', { timeout: 20000 }).catch(async (e) => {
+await page.waitForSelector('.score-band', { timeout: 20000 }).catch(async (e) => {
   await page.screenshot({ path: `${OUT}/14-lineup-fail.png` });
   console.log('errors:', errors, (await page.textContent('#main')).slice(0, 300));
   throw e;
 });
 await page.waitForTimeout(800);
-console.log('lineup matchup:', (await page.textContent('.match')).replace(/\s+/g, ' ').trim());
-console.log('lineup changes:', (await page.locator('.lu-grid .panel').nth(1).textContent()).replace(/\s+/g, ' ').trim().slice(0, 400));
+console.log('lineup matchup:', (await page.textContent('.score-band')).replace(/\s+/g, ' ').trim());
+console.log('lineup changes:', (await page.textContent('.moves')).replace(/\s+/g, ' ').trim().slice(0, 400));
 console.log('played teams this week:', [...playedTeams].join(','), '| final rows:', await page.locator('.lu-row.st-final').count(), '| upcoming rows:', await page.locator('.lu-row.st-upcoming').count());
 console.log('status bar:', (await page.textContent('.lu-status')).replace(/\s+/g, ' ').trim());
-console.log('lineup sources:', (await page.textContent('.lu-src')).replace(/\s+/g, ' ').trim());
-console.log('starter rows:', await page.locator('.lu-grid >> nth=1 >> .panel >> nth=0 >> .lu-row').count());
+console.log('lineup sources:', (await page.textContent('.datafoot')).replace(/\s+/g, ' ').trim());
+console.log('starter rows:', await page.locator('.c-list .sect >> nth=0 >> .lu-row').count());
 await page.screenshot({ path: `${OUT}/14-lineup.png`, fullPage: true });
-await page.click('.lu-row.click >> nth=0');
-await page.waitForSelector('#drawer:not([hidden]) .wkbox');
-console.log('drawer week:', (await page.textContent('#drawer .wkbox')).replace(/\s+/g, ' ').trim().slice(0, 300));
+await page.emulateMedia({ colorScheme: 'light' });
+await page.screenshot({ path: `${OUT}/14b-lineup-light.png`, fullPage: false });
+await page.emulateMedia({ colorScheme: 'dark' });
+await page.click('.c-list .lu-row.click >> nth=0');
+await page.waitForSelector('#drawer:not([hidden]) .dtabs');
+console.log('drawer week:', (await page.textContent('#drawer .dbody')).replace(/\s+/g, ' ').trim().slice(0, 300));
 await page.screenshot({ path: `${OUT}/15-lineup-drawer.png` });
 await page.keyboard.press('Escape');
 await page.click('[data-act=lu-mode][data-v=upside]');
 await page.selectOption('[data-lu=luTeam]', '4');
 await page.waitForTimeout(300);
-console.log('other team matchup:', (await page.textContent('.match')).replace(/\s+/g, ' ').trim());
+console.log('other team matchup:', (await page.textContent('.score-band')).replace(/\s+/g, ' ').trim());
 await page.selectOption('[data-lu=luTeam]', '1');
 await page.click('[data-act=lu-mode][data-v=auto]');
 // roster breakdown + waiver wire
@@ -275,25 +281,25 @@ console.log('waiver rows:', await page.locator('.wv-row').count(), '|', (await p
 await page.screenshot({ path: `${OUT}/18-waiver.png` });
 await page.click('[data-act=lu-seg][data-v=week]');
 // trades
-await page.click('.subnav >> text=Trades');
-await page.waitForSelector('.tr-head');
-console.log('trade head:', (await page.textContent('.tr-head')).replace(/\s+/g, ' ').trim());
-console.log('ready offers:', await page.locator('.tcard').count(), '| sells:', await page.locator('[data-act=tr-shop]').count(), '| buys:', await page.locator('[data-act=tr-ideas-target]').count());
+await nav(page, 'Trades');
+await page.waitForSelector('.trade-band');
+console.log('trade head:', (await page.textContent('.trade-band')).replace(/\s+/g, ' ').trim());
+console.log('ready offers:', await page.locator('.offer').count(), '| sells:', await page.locator('[data-act=tr-shop]').count(), '| buys:', await page.locator('[data-act=tr-ideas-target]').count());
 await page.screenshot({ path: `${OUT}/19-trades-ideas.png`, fullPage: true });
 if (await page.locator('[data-act=tr-ideas-target]').count()) {
   await page.click('[data-act=tr-ideas-target] >> nth=0');
   await page.waitForTimeout(300);
-  console.log('target offers:', await page.locator('.idea-offers .tcard').count());
+  console.log('target offers:', await page.locator('.idea-offers .offer').count());
 }
 if (await page.locator('[data-act=tr-shop]').count()) {
   await page.click('[data-act=tr-shop] >> nth=0');
   await page.waitForTimeout(300);
-  console.log('shop offers:', await page.locator('.idea-offers .tcard').count());
+  console.log('shop offers:', await page.locator('.idea-offers .offer').count());
 }
 await page.click('[data-act=tr-seg][data-v=builder]');
 await page.waitForSelector('.as-row');
-await page.click('.lu-grid .panel >> nth=0 >> .as-row >> nth=2');
-await page.click('.lu-grid .panel >> nth=1 >> .as-row >> nth=1');
+await page.click('.tb-top .sect >> nth=0 >> .as-row >> nth=2');
+await page.click('.tb-top .sect >> nth=1 >> .as-row >> nth=1');
 await page.waitForSelector('.tb-eval .cmp');
 console.log('builder eval:', (await page.textContent('.tb-eval')).replace(/\s+/g, ' ').trim().slice(0, 600));
 await page.screenshot({ path: `${OUT}/20-trade-builder.png`, fullPage: true });
@@ -301,12 +307,14 @@ await page.click('[data-act=tr-seg][data-v=chart]');
 await page.waitForSelector('.scroll table tbody tr');
 console.log('value chart rows:', await page.locator('.scroll table tbody tr').count());
 await page.click('.scroll table tbody tr.click >> nth=0');
-await page.waitForSelector('#drawer:not([hidden]) .outlook');
-console.log('drawer sections:', await page.locator('#drawer .block h3').allTextContents());
+await page.waitForSelector('#drawer:not([hidden]) .dtabs');
+console.log('drawer tabs:', await page.locator('#drawer .dtabs button').allTextContents());
+await page.click('#drawer [data-act=dtab][data-v=outlook]');
+console.log('drawer outlook:', (await page.textContent('#drawer .dbody')).replace(/\s+/g, ' ').trim().slice(0, 200));
 await page.screenshot({ path: `${OUT}/21-drawer-outlook.png`, fullPage: false });
 await page.keyboard.press('Escape');
 // method
-await page.click('text=How it works');
+await page.click('#rail >> text=How it works');
 await page.screenshot({ path: `${OUT}/10-method.png` });
 
 // mobile
@@ -314,9 +322,9 @@ const m = await newPage({ width: 390, height: 844 });
 await m.goto(BASE);
 await m.evaluate((s) => localStorage.setItem('dwr:v1', s), await page.evaluate(() => localStorage.getItem('dwr:v1')));
 await m.goto(BASE);
-await m.waitForSelector('.subnav');
-await m.click('.tab >> text=Test Dynasty SF');
-await m.click('.subnav >> text=Draft board');
+await m.waitForSelector('.tabbar');
+await switchLeague(m, 'Test Dynasty SF', true);
+await m.click('.tabbar >> text=Draft');
 await m.waitForSelector('.clock');
 await m.waitForTimeout(500);
 await m.screenshot({ path: `${OUT}/11-mobile-board.png` });
@@ -328,9 +336,9 @@ await m.screenshot({ path: `${OUT}/13-mobile-drawer.png` });
 const overflow = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 console.log('mobile horizontal overflow:', overflow);
 await m.keyboard.press('Escape');
-await m.click('.tab >> text=Season League');
-await m.click('.subnav >> text=Lineup');
-await m.waitForSelector('.match', { timeout: 20000 });
+await switchLeague(m, 'Season League', true);
+await m.click('.tabbar >> text=Lineup');
+await m.waitForSelector('.score-band', { timeout: 20000 });
 await m.waitForTimeout(500);
 await m.screenshot({ path: `${OUT}/16-mobile-lineup.png`, fullPage: true });
 console.log('mobile lineup overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
@@ -339,14 +347,14 @@ await m.waitForSelector('.pcard');
 await m.click('.pcard >> nth=0 >> summary');
 await m.screenshot({ path: `${OUT}/22-mobile-roster.png`, fullPage: false });
 console.log('mobile roster overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
-await m.click('.subnav >> text=Trades');
-await m.waitForSelector('.tr-head');
+await m.click('.tabbar >> text=Trades');
+await m.waitForSelector('.trade-band');
 await m.screenshot({ path: `${OUT}/23-mobile-trades.png`, fullPage: true });
 console.log('mobile trades overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));
 await m.click('[data-act=tr-seg][data-v=builder]');
 await m.waitForSelector('.as-row');
-await m.click('.lu-grid .panel >> nth=0 >> .as-row >> nth=1');
-await m.click('.lu-grid .panel >> nth=1 >> .as-row >> nth=0');
+await m.click('.tb-top .sect >> nth=0 >> .as-row >> nth=1');
+await m.click('.tb-top .sect >> nth=1 >> .as-row >> nth=0');
 await m.waitForSelector('.tb-eval .cmp');
 await m.screenshot({ path: `${OUT}/24-mobile-builder.png`, fullPage: false });
 console.log('mobile builder overflow:', await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1));

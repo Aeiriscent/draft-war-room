@@ -10,7 +10,8 @@ Static web app (vanilla ES modules, no build step) served by GitHub Pages, plus 
 
 ## Architecture
 - Pure logic, importable in Node: `js/util.js`, `league.js`, `model.js`, `draft.js`, `strategy.js`, `sim.js`, `weekly.js`, `outlook.js`, `trade.js`. Keep DOM out of these.
-- UI: `js/ui/app.js` (state, events via `data-act` delegation, live sync, practice engine), `views.js` (HTML-string views), `player.js` (drawer), `h.js` (helpers).
+- UI: `js/ui/app.js` (state, events via `data-act` delegation, live sync, practice engine, nav: left rail on desktop, top bar + bottom tab bar under 960px), `views.js` (HTML-string views), `tradeviews.js`, `insight.js`, `player.js` (tabbed drawer), `h.js` (helpers, icons).
+- Design system ("Sideline", see the header of `css/app.css`): turf-green chrome, yellow only for "your move", green/red only for good/bad, position colours as dots. Each screen starts with a `.ph` header and at most one turf `.band`; details go behind `<details>`, tabs or the drawer.
 - Model flow: `buildModel(data, prospects, cfg, {sleeper})` computes profiles once per league config, then `rank(model, {horizon, marketTrust})` re-ranks cheaply when the sliders move.
 - Player ids: Sleeper id when known, else `g:<gsis>` or `p:<slug>` for pre-draft prospects. Sleeper picks map by Sleeper id.
 - Team keys in drafts: `r<roster_id>` for league drafts, `u<user_id>`/`s<slot>` for mocks and practice.

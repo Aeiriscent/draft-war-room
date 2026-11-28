@@ -1,62 +1,68 @@
 // Player profile drawer.
-import { esc, fmt, pos, grade, tag, ageTxt, kickTxt, fxTag } from './h.js';
+import { esc, fmt, pos, grade, tag, ageTxt, kickTxt, fxTag, icon } from './h.js';
 import { outlookHTML, valueHTML } from './insight.js';
 import { CLIFF } from '../model.js';
 
 const GRADE_NAMES = [['outlook', 'Next-yr outlook'], ['dynasty', 'Dynasty 3-yr'], ['ceiling', 'Ceiling'], ['floor', 'Floor'],
   ['role', 'Role'], ['cast', 'Support cast'], ['safety', 'Safety']];
 
+const TABS = [['overview', 'Overview'], ['week', 'This week'], ['outlook', 'Outlook'], ['value', 'Trade value'], ['stats', 'Stats'], ['notes', 'Notes']];
+export function drawerTabs(o) {
+  return TABS.filter(([k]) => (k === 'week' ? !!o.week : k === 'value' ? !!o.value : k === 'outlook' ? !!o.outlook : true)).map(([k]) => k);
+}
+
 export function playerHTML(p, M, opts = {}) {
   const { tags = {}, draftInfo = null, canDraft = false, canMark = false, week = null, outlook = null, value = null, canTrade = false } = opts;
+  const tabs = drawerTabs(opts);
+  const tab = tabs.includes(opts.tab) ? opts.tab : opts.week ? 'week' : tabs[0];
   const t = tags[p.id] || {};
   const d = p.draft || {};
-  const cap = d.round ? `Round ${d.round}${d.ovr ? ` (#${d.ovr} overall)` : ''}, ${d.year}` : p.prospect ? `${d.year} class, pre-draft` : d.year ? `${d.year} entry` : 'Undrafted/unknown';
+  const cap = d.round ? `round ${d.round}${d.ovr ? ` (#${d.ovr})` : ''} in ${d.year}` : p.prospect ? `${d.year} class, not drafted yet` : d.year ? `entered ${d.year}` : 'undrafted';
   const g = p.grades;
-  const flagsHtml = (p.flags || []).map((f) => `<div class="flag">${tag(f.label, f.tone)}<span class="muted">${esc(f.why)}</span></div>`).join('')
-    || '<div class="muted small">No red or green flags.</div>';
-  const actions = `
-    <div class="chips" style="margin:8px 0">
-      <button class="chip ${t.t === 'target' ? 'on' : ''}" data-act="tag" data-id="${esc(p.id)}" data-v="target">★ Target</button>
-      <button class="chip ${t.t === 'avoid' ? 'on' : ''}" data-act="tag" data-id="${esc(p.id)}" data-v="avoid">⛔ Avoid</button>
-      ${canDraft ? `<button class="btn gold sm" data-act="draft" data-id="${esc(p.id)}">Draft for team on the clock</button>` : ''}
-      ${canMark ? `<button class="btn sm" data-act="mark" data-id="${esc(p.id)}" title="Use if live sync is down">Mark taken at current pick</button>` : ''}
-    </div>`;
-  return `
-  <button class="iconbtn close" data-act="close-drawer" aria-label="Close">Close ✕</button>
-  <div class="phead">
-    <div>
-      <div class="muted small">${pos(p.pos)} ${esc(p.prospect ? p.college || '' : p.team)} · Rank ${p.rank} overall · ${p.pos}${p.posRank} · Tier ${p.tier ?? '–'}</div>
-      <h2>${esc(p.name)}</h2>
-      <div class="muted small">Age ${ageTxt(p.age)} next Sept · ${p.yearsExp != null ? `${p.yearsExp} yrs exp` : ''} · ${esc(cap)}${p.college && !p.prospect ? ` · ${esc(p.college)}` : ''}</div>
-      ${draftInfo ? `<div style="margin-top:6px">${tag(draftInfo, 'info')}</div>` : ''}
+  const we = week?.e;
+  const weekKey = we && !we.bye ? (we.state === 'final' ? [we.actual != null ? fmt(we.actual) : '–', `Scored in week ${week.week}`] : we.state === 'live' ? [fmt(we.actual ?? 0), `So far, week ${week.week}`] : [fmt(we.exp), `Projected, week ${week.week}`]) : null;
+  const head = `<div class="dhead">
+    <button class="iconbtn close" data-act="close-drawer" aria-label="Close">${icon('close')}</button>
+    <div class="meta">${pos(p.pos)} ${esc(p.prospect ? p.college || '' : p.team)}, ranked ${p.rank} overall (${p.pos}${p.posRank})</div>
+    <h2>${esc(p.name)}</h2>
+    <div class="meta">${p.age != null ? `${Math.floor(p.age)} next season` : 'Age unknown'}${p.yearsExp != null && !p.prospect ? `, ${p.yearsExp} years in the league` : ''}, ${esc(cap)}${p.college && !p.prospect ? `, ${esc(p.college)}` : ''}</div>
+    ${draftInfo ? `<div class="meta" style="margin-top:4px;color:var(--yellow)">${esc(draftInfo)}</div>` : ''}
+    <div class="keyrow">
+      ${weekKey ? `<div><b>${weekKey[0]}</b><span>${weekKey[1]}</span></div>` : ''}
+      ${outlook?.ros ? `<div><b>${fmt(outlook.ros.ppg)}</b><span>Rest of season, ${p.pos}${outlook.ros.rank}</span></div>` : ''}
+      <div><b>${fmt(p.proj)}</b><span>Projected PPG, ${M.nextSeason}</span></div>
+      ${value ? `<div><b>${Math.round(value.a.value).toLocaleString()}</b><span>Trade value</span></div>` : ''}
     </div>
-  </div>
-  ${actions}
-  ${week ? weekHTML(week) : ''}
-  <div class="grades">${GRADE_NAMES.map(([k, n]) => `<div><b class="grade ${(g[k] || '–')[0]}" style="background:none;font-size:20px">${esc(g[k] || '–')}</b><span>${n}</span></div>`).join('')}</div>
-  <div class="stats">
-    <div><b>${fmt(p.proj)}</b><span>Projected PPG ${M.nextSeason}</span></div>
-    <div><b>${fmt(p.expGames, 1)}</b><span>Expected games</span></div>
-    <div><b>${fmt(p.proj - p.repl)}</b><span>PPG over replacement (${p.pos}${Math.round(M.demand[p.pos])})</span></div>
-    <div><b>${p.years.map((y) => fmt(y)).join(' → ')}</b><span>PPG path, next 3 yrs</span></div>
-    <div><b>${fmt(p.floorWeek)}–${fmt(p.ceilWeek)}</b><span>Typical bad–great week</span></div>
-    <div><b>${p.consistency != null ? Math.round(p.consistency * 100) + '%' : '–'}</b><span>Weeks startable (top ${M.thr[p.pos].start} ${p.pos})</span></div>
-    <div><b class="risk-${p.risk.label}">${p.risk.label}</b><span>Risk score ${p.risk.score}/100</span></div>
-    <div><b>${p.mktRank ? '#' + p.mktRank : '–'}</b><span>Market rank (model #${p.rank})</span></div>
-  </div>
-  ${outlook ? `<section class="block outlook"><h3>Outlook</h3>${outlookHTML(outlook, p)}</section>` : ''}
-  ${value ? `<section class="block"><h3>Trade value</h3>${valueHTML(value, { canTrade })}</section>` : ''}
-  <section class="block"><h3>What stands out</h3><div class="flags">${flagsHtml}</div>
-    ${p.risk.parts.length ? `<div class="small muted">Risk drivers: ${esc(p.risk.parts.map((x) => x[1]).join('; '))}</div>` : ''}
-  </section>
-  ${p.weeks.length ? weeklyBlock(p, M) : ''}
-  ${roleBlock(p, M)}
-  ${p.cast ? castBlock(p) : ''}
-  ${injuryBlock(p)}
-  ${p.prospect ? prospectBlock(p) : ''}
-  <section class="block"><h3>Your notes</h3>
-    <textarea data-note="${esc(p.id)}" placeholder="Film notes, trade ideas, landing-spot thoughts…">${esc(t.note || '')}</textarea>
-  </section>`;
+    <nav class="dtabs" role="tablist">${tabs.map((k) => `<button role="tab" aria-selected="${k === tab}" class="${k === tab ? 'on' : ''}" data-act="dtab" data-v="${k}">${TABS.find((x) => x[0] === k)[1]}</button>`).join('')}</nav>
+  </div>`;
+  let body = '';
+  if (tab === 'overview') {
+    const flagsHtml = (p.flags || []).slice(0, 8).map((f) => `<div class="flag">${tag(f.label, f.tone)}<span class="muted">${esc(f.why)}</span></div>`).join('') || '<div class="muted small">Nothing unusual stands out.</div>';
+    body = `<div class="actions">
+        <button class="chip ${t.t === 'target' ? 'on' : ''}" data-act="tag" data-id="${esc(p.id)}" data-v="target">★ Target</button>
+        <button class="chip ${t.t === 'avoid' ? 'on' : ''}" data-act="tag" data-id="${esc(p.id)}" data-v="avoid">Avoid</button>
+        ${canDraft ? `<button class="btn gold sm" data-act="draft" data-id="${esc(p.id)}">Draft for the team on the clock</button>` : ''}
+        ${canMark ? `<button class="btn sm" data-act="mark" data-id="${esc(p.id)}" title="Use if live sync is down">Mark as taken</button>` : ''}
+      </div>
+      ${outlook ? `<p class="ol-head">${tag(outlook.role.label, outlook.role.tone)} ${esc(outlook.tagline)}</p>` : ''}
+      <div class="grades">${GRADE_NAMES.map(([k, n]) => `<div><b class="grade ${(g[k] || '–')[0]}">${esc(g[k] || '–')}</b><span>${n}</span></div>`).join('')}</div>
+      <div class="stats">
+        <div><b>${fmt(p.expGames, 1)}</b><span>Expected games</span></div>
+        <div><b>${fmt(p.proj - p.repl)}</b><span>PPG over a replacement ${p.pos}</span></div>
+        <div><b>${p.years.map((y) => fmt(y)).join(' → ')}</b><span>PPG, next 3 seasons</span></div>
+        <div><b>${fmt(p.floorWeek)}–${fmt(p.ceilWeek)}</b><span>Typical bad to great week</span></div>
+        <div><b>${p.consistency != null ? Math.round(p.consistency * 100) + '%' : '–'}</b><span>Weeks he was startable</span></div>
+        <div><b class="risk-${p.risk.label}">${p.risk.label}</b><span>Risk (${p.risk.score} of 100)</span></div>
+      </div>
+      <section class="block"><h3>What stands out</h3><div class="flags">${flagsHtml}</div></section>
+      ${p.prospect ? prospectBlock(p) : ''}`;
+  } else if (tab === 'week') body = weekHTML(week);
+  else if (tab === 'outlook') body = outlookHTML(outlook, p, { headline: true });
+  else if (tab === 'value') body = valueHTML(value, { canTrade });
+  else if (tab === 'stats') body = `${p.weeks.length ? weeklyBlock(p, M) : '<p class="muted">No NFL games yet.</p>'}${roleBlock(p, M)}${p.cast ? castBlock(p) : ''}${injuryBlock(p)}
+      ${p.risk.parts.length ? `<p class="small muted" style="margin-top:14px">Risk comes from: ${esc(p.risk.parts.map((x) => x[1]).join('; '))}.</p>` : ''}`;
+  else body = `<p class="muted small">Notes stay on this device.</p><textarea data-note="${esc(p.id)}" placeholder="Film notes, trade ideas, landing-spot thoughts">${esc(t.note || '')}</textarea>`;
+  return head + `<div class="dbody">${body}</div>`;
 }
 
 function weeklyBlock(p, M) {
@@ -129,19 +135,19 @@ function prospectBlock(p) {
 
 function weekHTML({ e, week }) {
   const g = e.game;
-  if (e.bye) return `<div class="panel wkbox"><h3>Week ${week}</h3><p class="muted" style="margin:0">Bye week.</p></div>`;
+  if (e.bye) return `<h3>Week ${week}</h3><p class="muted">Bye week.</p>`;
   const fx = e.factors.map((f) => `<div class="flag">${fxTag(f)}<span class="muted">${esc(f.why)}</span></div>`).join('') || '<div class="muted small">Nothing unusual this week.</div>';
   const vs = `${g.home ? 'vs' : '@'} ${esc(g.opp)}`;
-  const status = e.state === 'final' ? `<span class="gst final">Final</span>${g.score ? ` ${g.score[0]}–${g.score[1]}` : ''}` : e.state === 'live' ? '<span class="gst live"><i class="ldot"></i>Live</span>' : `<span class="gst up">${esc(kickTxt(g))}</span>`;
+  const status = e.state === 'final' ? `<span class="gst">Final</span>${g.score ? ` ${g.score[0]}–${g.score[1]}` : ''}` : e.state === 'live' ? '<span class="gst live">Live</span>' : `<span class="muted">${esc(kickTxt(g))}</span>`;
   const top = e.state === 'final'
     ? `<div><b>${e.actual != null ? fmt(e.actual) : '–'}</b><span>Points scored (final)</span></div><div><b>${fmt(e.projExp)}</b><span>What we projected</span></div>`
     : e.state === 'live'
       ? `<div><b>${fmt(e.actual ?? 0)}</b><span>Points so far (live)</span></div><div><b>${fmt(e.exp)}</b><span>Projected finish</span></div>`
       : `<div><b>${fmt(e.exp)}</b><span>Projected points</span></div><div><b>${fmt(e.floor)}–${fmt(e.ceil)}</b><span>Likely range</span></div><div><b>${Math.round(e.pPlay * 100)}%</b><span>Chance he plays</span></div>`;
-  return `<div class="panel wkbox"><h3>Week ${week}: ${vs} ${status}</h3>
+  return `<h3>Week ${week}, ${vs} <span style="font-weight:500">${status}</span></h3>
     <div class="stats">${top}
       <div><b>${e.sleeperPts != null ? fmt(e.sleeperPts) : '–'}</b><span>Sleeper projection (your scoring)</span></div>
       <div><b>${e.form != null ? fmt(e.form) : '–'}</b><span>Recent form (PPG)</span></div>
       <div><b>×${fmt(e.matchupMult ?? 1, 2)}</b><span>Matchup adjustment</span></div>
-    </div>${e.state === 'upcoming' ? fx : `<details><summary class="small muted">What went into the pre-game projection</summary>${fx}</details>`}</div>`;
+    </div>${e.state === 'upcoming' ? `<h4>What moves his number</h4><div class="flags">${fx}</div>` : `<details><summary class="disclose">What went into the pre-game projection</summary><div class="flags">${fx}</div></details>`}`;
 }

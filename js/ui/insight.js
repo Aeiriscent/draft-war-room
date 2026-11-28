@@ -64,19 +64,19 @@ export function valueHTML(r, { canTrade = false } = {}) {
 }
 
 export function assetLabel(a) {
-  if (a.kind === 'pick') return `<span class="pos pk">PK</span> ${esc(a.label)} <small class="muted">${esc(a.detail)}${a.via ? ` · via ${esc(a.via)}` : ''}</small>`;
-  return `${posBadge(a.pos)} ${esc(a.label)} <small class="muted">${esc(a.p.team || '')}${a.p.age ? ` · ${Math.floor(a.p.age)}` : ''}</small>`;
+  if (a.kind === 'pick') return `<span class="pos pk">PK</span> ${esc(a.label)} <small class="muted">${esc(a.detail)}${a.via ? `, from ${esc(a.via)}` : ''}</small>`;
+  return `${esc(a.label)} ${posBadge(a.pos)} <small class="muted">${esc(a.p.team || '')}${a.p.age ? `, ${Math.floor(a.p.age)}` : ''}</small>`;
 }
 
-/** A proposed trade as a card. o: evaluateTrade() result plus {them, giveIds, getIds}. */
+/** A proposed trade as a compact row. o: evaluateTrade() result plus {them, giveIds, getIds}. */
 export function tradeCard(o, { title = null, open = true } = {}) {
-  const side = (list) => list.map((a) => `<div class="tc-asset">${assetLabel(a)} <span class="tc-v">${num(a.market)}</span></div>`).join('');
+  const side = (list) => list.map((a) => `<div class="as"><span>${assetLabel(a)}</span><span class="v">${num(a.market)}</span></div>`).join('');
   const [al, at] = o.acc.label;
-  return `<div class="tcard">
-    ${title ? `<div class="tc-title">${title}</div>` : ''}
-    <div class="tc-sides"><div><div class="tc-h">You send <span>trade value</span></div>${side(o.give)}</div><div class="tc-arrow">⇄</div><div><div class="tc-h">You get from ${esc(o.them.name)} <span>trade value</span></div>${side(o.get)}</div></div>
-    <div class="chips" style="margin:8px 0 4px">${tag(o.grade[0], o.grade[1])}${tag(`${al} · ${pct(o.acc.p)}`, at)}</div>
-    <ul class="ol-list small">${o.lines.slice(0, 4).map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
-    ${open ? `<button class="btn sm" data-act="tr-open" data-partner="${o.them.rid}" data-give="${esc(o.giveIds.join(','))}" data-get="${esc(o.getIds.join(','))}">Open in trade builder</button>` : ''}
+  return `<div class="offer">
+    ${title ? `<div style="font-weight:600;margin-bottom:6px">${title}</div>` : ''}
+    <div class="ln"><div><span class="who">You send</span>${side(o.give)}</div><div class="arrow">⇄</div><div><span class="who">You get from ${esc(o.them.name)}</span>${side(o.get)}</div></div>
+    <div class="verdict">${tag(o.grade[0], o.grade[1])}${tag(`${al}, ${pct(o.acc.p)}`, at)}
+      ${open ? `<button class="linkbtn" data-act="tr-open" data-partner="${o.them.rid}" data-give="${esc(o.giveIds.join(','))}" data-get="${esc(o.getIds.join(','))}">Open in builder</button>` : ''}</div>
+    <details><summary class="disclose">Why</summary><ul>${o.lines.slice(0, 5).map((l) => `<li>${esc(l)}</li>`).join('')}</ul></details>
   </div>`;
 }

@@ -14,7 +14,7 @@ import { loadState, saveState, download } from '../store.js';
 import { playerHTML } from './player.js';
 import { rankingsView, boardView, teamsView, settingsView, methodView, lineupView } from './views.js';
 import { tradesView } from './tradeviews.js';
-import { esc, toast, ago } from './h.js';
+import { esc, toast, ago, icon } from './h.js';
 
 const $ = (s) => document.querySelector(s);
 const S = {
@@ -22,7 +22,7 @@ const S = {
   data: null, prospects: null, sleeperDB: null, models: new Map(), live: new Map(),
   page: 'league', drawer: null, modal: null,
 };
-const ui = { pos: 'ALL', q: '', sort: 'rank', flip: false, limit: 150, hideTaken: true, tagged: false, bpos: 'ALL', bq: '', seg: 'recs', luTeam: null, luWeek: null, luMode: 'auto', luSeg: 'week', luOpen: false, wvPos: 'ALL', trSeg: 'ideas', trPartner: null, trGive: [], trGet: [], trShop: null, trTarget: null, trMe: null, vcPos: 'ALL', vcTeam: 'ALL' };
+const ui = { pos: 'ALL', q: '', sort: 'rank', flip: false, limit: 150, hideTaken: true, tagged: false, allCols: false, bpos: 'ALL', bq: '', seg: 'recs', luTeam: null, luWeek: null, luMode: 'auto', luSeg: 'week', luOpen: false, wvPos: 'ALL', trSeg: 'ideas', trPartner: null, trGive: [], trGet: [], trShop: null, trTarget: null, trMe: null, vcPos: 'ALL', vcTeam: 'ALL' };
 const C = {
   ui, get tags() { return S.p.tags; }, get data() { return S.data; },
   live: (lg) => S.live.get(lg.id),
@@ -609,34 +609,66 @@ function draftPlayer(lg, id) {
 }
 
 // ---------------- rendering ----------------
-function renderTabs() {
-  const tabs = S.p.leagues.map((l) => {
-    const L = S.live.get(l.id);
-    const dot = L?.polling && L?.draft?.status === 'drafting' ? 'live' : '';
-    return `<button class="tab ${l.id === active()?.id && S.page === 'league' ? 'on' : ''}" data-act="tab" data-id="${l.id}"><span class="dot ${dot}"></span>${esc(l.name)}</button>`;
-  }).join('');
-  $('#tabs').innerHTML = tabs + '<button class="tab" data-act="add-league">+ League</button>';
+// ---------------- navigation: rail (desktop), top bar + tab bar (phone), league switcher ----------------
+const KIND = { sleeper: 'Sleeper league', mock: 'Sleeper draft', practice: 'Practice draft', manual: 'Draft tracker' };
+function navItems(lg) {
+  if (!lg) return [];
+  const v = [];
+  if (lg.kind === 'sleeper' && lg.phase === 'existing') v.push(['lineup', 'Lineup'], ['trades', 'Trades']);
+  v.push(['board', 'Draft'], ['rankings', 'Rankings'], ['teams', 'Teams'], ['settings', 'Settings']);
+  return v;
 }
-
-function subnav(lg, B, v = S.p.view) {
-  const kinds = { sleeper: 'Sleeper league', mock: 'Sleeper draft', practice: 'Practice draft', manual: 'Draft tracker' };
-  const meta = `${kinds[lg.kind]} · ${lg.config.teams} teams · ${lg.phase === 'existing' ? 'existing league' : 'startup'}`;
-  const views = [['board', 'Draft board'], ['rankings', 'Rankings'], ['teams', 'Teams'], ['settings', 'League settings']];
-  if (lg.kind === 'sleeper' && lg.phase === 'existing') views.unshift(['lineup', 'Lineup'], ['trades', 'Trades']);
-  return `<nav class="subnav">${views
-    .map(([k, n]) => `<button class="${v === k ? 'on' : ''}" data-act="view" data-v="${k}">${n}</button>`).join('')}<span class="meta">${esc(meta)}</span></nav>`;
+function currentView(lg) {
+  const v = S.p.view;
+  return navItems(lg).some(([k]) => k === v) ? v : 'board';
+}
+function leagueMenu() {
+  if (S.menu !== 'leagues') return '';
+  const cur = active();
+  return `<div class="menu" role="menu">
+    ${S.p.leagues.map((l) => {
+      const L = S.live.get(l.id);
+      const live = L?.polling && L?.draft?.status === 'drafting';
+      return `<button role="menuitem" class="${l.id === cur?.id ? 'on' : ''}" data-act="tab" data-id="${l.id}"><span>${esc(l.name)}${live ? ' <i class="livedot" title="Draft live"></i>' : ''}</span><small>${esc(KIND[l.kind])}, ${l.config.teams} teams</small></button>`;
+    }).join('')}
+    <button role="menuitem" class="add" data-act="add-league">${icon('plus')} Add a league</button></div>`;
+}
+function moreMenu(items) {
+  if (S.menu !== 'more') return '';
+  return `<div class="menu up" role="menu">${items.map(([k, n]) => `<button role="menuitem" data-act="view" data-v="${k}">${icon(k)} ${n}</button>`).join('')}
+    <button role="menuitem" data-act="method">${icon('help')} How it works</button></div>`;
+}
+function renderNav() {
+  const lg = active();
+  const items = navItems(lg);
+  const v = S.page === 'method' ? 'method' : lg ? currentView(lg) : null;
+  const leagueBtn = lg
+    ? `<button class="league-btn" data-act="menu" data-v="leagues" aria-haspopup="menu" aria-expanded="${S.menu === 'leagues'}"><span><b>${esc(lg.name)}</b><small>${esc(KIND[lg.kind])}, ${lg.config.teams} teams</small></span>${icon('caret')}</button>`
+    : `<button class="league-btn" data-act="add-league"><span><b>Add a league</b><small>Sleeper, mock or practice</small></span>${icon('plus')}</button>`;
+  const mark = '<span class="mark" aria-hidden="true"><i></i></span>';
+  $('#rail').innerHTML = `<div class="brand">${mark}War Room</div>
+    <div class="switch">${leagueBtn}${leagueMenu()}</div>
+    <nav class="navlist">${items.map(([k, n]) => `<button class="${v === k ? 'on' : ''}" data-act="view" data-v="${k}">${icon(k)}<span>${n}</span></button>`).join('')}</nav>
+    <div class="rail-foot"><button class="${v === 'method' ? 'on' : ''}" data-act="method">${icon('help')}<span>How it works</span></button></div>`;
+  $('#topbar').innerHTML = `<div class="switch">${leagueBtn}${leagueMenu()}</div><button class="iconbtn" data-act="method" aria-label="How it works">${icon('help')}</button>`;
+  const main = items.slice(0, items.length > 5 ? 4 : 5), rest = items.slice(main.length);
+  $('#tabbar').innerHTML = !lg ? '' : main.map(([k, n]) => `<button class="${v === k ? 'on' : ''}" data-act="view" data-v="${k}">${icon(k)}<span>${n}</span></button>`).join('')
+    + (rest.length ? `<div class="switch"><button class="${rest.some(([k]) => k === v) || S.menu === 'more' ? 'on' : ''}" data-act="menu" data-v="more">${icon('more')}<span>More</span></button>${moreMenu(rest)}</div>` : '');
+  document.body.classList.toggle('no-league', !lg);
 }
 
 function welcome() {
-  return `<div class="wrap" style="max-width:1000px">
-    <div class="hero"><div><h1>Your dynasty draft war room</h1>
-      <p>Grades every player in your league’s exact scoring, reads every opponent’s strategy as picks happen, and tells you who to take and why. Live-synced with Sleeper.</p>
-      <button class="btn gold" data-act="add-league">Add your first league</button></div>
-      <div class="panel small"><b>Set up once per league:</b><ol style="margin:8px 0 0;padding-left:18px">
-        <li>Connect a Sleeper league (startup or existing) or paste a mock-draft link.</li>
-        <li>Rankings re-grade in that league’s scoring, lineup and size.</li>
-        <li>On draft day keep the board open: it polls Sleeper every few seconds.</li>
-        <li>Rehearse with Practice drafts against CPU teams that run real strategies.</li></ol></div></div></div>`;
+  return `<div class="wrap" style="max-width:980px">
+    <section class="band welcome">
+      <h1>Lineups, trades and drafts for your dynasty leagues</h1>
+      <p>Connect a Sleeper league and every player is graded in that league’s exact scoring: who to start this week, what each player is worth in a trade, and who to take when you’re on the clock.</p>
+      <button class="btn gold" data-act="add-league">Add your first league</button>
+    </section>
+    <ol class="steps">
+      <li><b>Add a league.</b> Find it by your Sleeper username, paste a league or draft link, or start a practice draft.</li>
+      <li><b>Check the Lineup tab each week.</b> It shows your moves, live scores and injury news.</li>
+      <li><b>Use Trades before you message anyone.</b> It grades offers and suggests ones the other team should accept.</li>
+    </ol></div>`;
 }
 
 let focusMemo = null;
@@ -645,7 +677,7 @@ function render() {
   const fe = document.activeElement;
   if (fe && fe.matches?.('[data-ui]')) focusMemo = { k: fe.dataset.ui, s: fe.selectionStart };
   else focusMemo = null;
-  renderTabs();
+  renderNav();
   const main = $('#main');
   if (S.page === 'method') main.innerHTML = methodView(C);
   else {
@@ -654,10 +686,8 @@ function render() {
     else {
       const B = boardInfo(lg);
       S.lastB = B;
-      let v = S.p.view;
-      if (v === 'lineup' && !(lg.kind === 'sleeper' && lg.phase === 'existing')) v = 'board';
+      const v = currentView(lg);
       let body;
-      if (v === 'trades' && !(lg.kind === 'sleeper' && lg.phase === 'existing')) v = 'board';
       if (v === 'lineup') {
         const X = lineupInfo(lg); S.lastLU = X;
         if (X.me && ui.luSeg === 'roster') X.roster = rosterInfo(lg, X);
@@ -665,7 +695,9 @@ function render() {
         body = lineupView(C, lg, X);
       } else if (v === 'trades') body = tradesView(C, lg, tradesInfo(lg));
       else body = v === 'rankings' ? rankingsView(C, lg, B) : v === 'teams' ? teamsView(C, lg, B) : v === 'settings' ? settingsView(C, lg, B) : boardView(C, lg, B);
-      main.innerHTML = subnav(lg, B, v) + `<div class="wrap">${body}</div>`;
+      const TITLES = { board: 'Draft', rankings: 'Rankings', teams: 'Teams', settings: 'League settings' };
+      if (!body.trimStart().startsWith('<header class="ph"')) body = `<header class="ph"><div><h1>${TITLES[v] || ''}</h1><div class="sub">${esc(KIND[lg.kind])}, ${lg.config.teams} teams${lg.phase === 'existing' ? '' : ', startup'}</div></div></header>${body}`;
+      main.innerHTML = `<div class="wrap v-${v}">${body}</div>`;
     }
   }
   if (focusMemo) {
@@ -687,6 +719,7 @@ function renderDrawer() {
   const B = S.lastB || boardInfo(lg);
   const oc = B.state?.onClock;
   const taken = B.takenIds?.has(p.id);
+  if (S.dtabFor !== p.id) { S.dtab = null; S.dtabFor = p.id; }
   const keep = d.hidden ? 0 : d.scrollTop;
   d.innerHTML = playerHTML(p, M, {
     tags: S.p.tags, draftInfo: B.takenBy?.get(p.id) ? `Taken: ${B.takenBy.get(p.id)}` : null,
@@ -696,6 +729,7 @@ function renderDrawer() {
     outlook: outlookOf(lg, p),
     value: p.prospect ? null : valueOf(lg, p.id),
     canTrade: !!tradeCtx(lg),
+    tab: S.dtab,
   });
   d.hidden = false; scrim.hidden = false;
   d.scrollTop = keep;
@@ -868,12 +902,14 @@ function createPractice(kind) {
 
 // ---------------- events ----------------
 const ACT = {
-  tab: (el) => { S.page = 'league'; S.drawer = null; const lg = S.p.leagues.find((l) => l.id === el.dataset.id); if (lg) activate(lg, { full: !S.live.get(lg.id) }); },
-  'add-league': () => { S.modal = { step: 'choose' }; renderModal(); },
-  method: () => { S.page = S.page === 'method' ? 'league' : 'method'; render(); },
-  view: (el) => { S.page = 'league'; S.p.view = el.dataset.v; save(); render(); window.scrollTo(0, 0); },
+  menu: (el) => { S.menu = S.menu === el.dataset.v ? null : el.dataset.v; renderNav(); },
+  tab: (el) => { S.menu = null; S.page = 'league'; S.drawer = null; const lg = S.p.leagues.find((l) => l.id === el.dataset.id); if (lg) activate(lg, { full: !S.live.get(lg.id) }); },
+  'add-league': () => { S.menu = null; renderNav(); S.modal = { step: 'choose' }; renderModal(); },
+  method: () => { S.menu = null; S.page = S.page === 'method' ? 'league' : 'method'; render(); window.scrollTo(0, 0); },
+  view: (el) => { S.menu = null; S.page = 'league'; S.p.view = el.dataset.v; save(); render(); window.scrollTo(0, 0); },
   player: (el, e) => { e.preventDefault(); S.drawer = el.dataset.id; renderDrawer(); },
   'close-drawer': () => { S.drawer = null; renderDrawer(); },
+  dtab: (el) => { S.dtab = el.dataset.v; renderDrawer(); $('#drawer').scrollTop = 0; },
   tag: (el) => {
     const id = el.dataset.id, v = el.dataset.v;
     const t = S.p.tags[id] || (S.p.tags[id] = {});
@@ -970,6 +1006,8 @@ const ACT = {
     if (!a) return;
     ui.trPartner = a.owner; ui.trGet = [a.id]; ui.trGive = []; ui.trSeg = 'builder'; S.p.view = 'trades'; S.drawer = null; save(); render(); renderDrawer(); window.scrollTo(0, 0);
   },
+  'vc-pos': (el) => { ui.vcPos = el.dataset.v; render(); },
+  'ui-toggle': (el) => { ui[el.dataset.k] = !ui[el.dataset.k]; render(); },
   'tr-ideas-target': (el) => { ui.trTarget = ui.trTarget === el.dataset.id ? null : el.dataset.id; render(); },
   'lu-refresh': async () => {
     const lg = active(), X = S.lastLU;
@@ -1094,13 +1132,14 @@ async function init() {
     return;
   }
   document.addEventListener('click', (e) => {
+    if (S.menu && !e.target.closest('.menu, [data-act=menu]')) { S.menu = null; renderNav(); }
     const el = e.target.closest('[data-act]');
     if (el && ACT[el.dataset.act]) ACT[el.dataset.act](el, e);
   });
   $('#scrim').addEventListener('click', () => { S.drawer = null; renderDrawer(); });
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { S.drawer = null; S.modal = null; renderDrawer(); renderModal(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { S.drawer = null; S.modal = null; S.menu = null; renderNav(); renderDrawer(); renderModal(); } });
   document.addEventListener('visibilitychange', () => { const lg = active(); if (lg && !document.hidden) schedulePoll(lg); });
   setInterval(() => { for (const el of document.querySelectorAll('[data-ago]')) el.textContent = 'Updated ' + ago(+el.dataset.ago); }, 5000);
   const lg = active();
