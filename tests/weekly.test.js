@@ -70,7 +70,9 @@ test('injury status and practice drive the chance to play', () => {
 });
 
 test('bad weather downgrades passers, Sleeper projection is blended in', () => {
-  const qb = starters.filter((p) => p.pos === 'QB').map((p) => ({ p, e: projectWeek(p, W0) })).find(({ e }) => !e.bye && e.game.roof === 'outdoors');
+  // a healthy starting QB in an outdoor game (backups with ~0 points can't show a downgrade)
+  const qb = starters.filter((p) => p.pos === 'QB').map((p) => ({ p, e: projectWeek(p, W0) }))
+    .find(({ e }) => !e.bye && e.game.roof === 'outdoors' && e.pPlay > 0.95 && e.exp > 10);
   const g = qb.e.game;
   const wx = { [g.stadium + '|' + g.day]: { temp: 18, wind: 24, pop: 80, precip: 0.1 } };
   const bad = projectWeek(qb.p, buildWeek({ data, M, week, season, now: before, weather: wx }));
@@ -78,7 +80,9 @@ test('bad weather downgrades passers, Sleeper projection is blended in', () => {
   assert.ok(bad.factors.some((f) => f.label === 'Weather'));
   const proj = projectWeek(qb.p, buildWeek({ data, M, week, season, now: before, projections: { [qb.p.sid]: { pass_yd: 300, pass_td: 3, rush_yd: 20 } } }));
   assert.ok(Math.abs(proj.sleeperPts - (12 + 12 + 2)) < 1e-9);
-  assert.ok(proj.exp > qb.e.exp || qb.e.form > 26);
+  // the blend lands between Sleeper's number and our own matchup-adjusted form
+  const lo = Math.min(26, qb.e.proj), hi = Math.max(26, qb.e.proj);
+  assert.ok(proj.proj >= lo - 1e-9 && proj.proj <= hi + 1e-9, `${proj.proj} not in [${lo}, ${hi}]`);
 });
 
 test('optimizer fills superflex correctly, respects locks, risk modes move variance', () => {
